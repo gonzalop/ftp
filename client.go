@@ -1,0 +1,349 @@
+package ftp
+
+import (
+	"bufio"
+	"crypto/tls"
+	"fmt"
+	"log/slog"
+	"net"
+	"strings"
+	"time"
+)
+
+// Client represents an FTP client connection.
+type Client struct {
+	// conn is the underlying network connection (control channel)
+	conn net.Conn
+
+	// reader is a buffered reader for the control channel
+	reader *bufio.Reader
+
+	// tlsConfig is the TLS configuration (if TLS is enabled)
+	tlsConfig *tls.Config
+
+	// tlsMode indicates whether TLS is disabled, explicit, or implicit
+	tlsMode tlsMode
+
+	// timeout is the timeout for operations
+	timeout time.Duration
+
+	// logger is used for debug logging
+	logger *slog.Logger
+
+	// dialer is used to establish connections
+	dialer *net.Dialer
+
+	// host and port for the connection
+	host string
+	port string
+
+	// features stores the server's advertised features from FEAT command
+	features map[string]string
+
+	// activeMode indicates whether to use active (PORT) or passive (PASV/EPSV) mode
+	activeMode bool
+
+	// disableEPSV disables the use of EPSV command, forcing PASV default
+	disableEPSV bool
+}
+
+// Dial connects to an FTP server at the given address.
+// The address should be in the form "host:port".
+//
+// Example:
+//
+//	client, err := ftp.Dial("ftp.example.com:21")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	defer client.Quit()
+func Dial(addr string, options ...Option) (*Client, error) {
+	// Parse the address
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid address: %w", err)
+	}
+
+	// Create the client with defaults
+	c := &Client{
+		host:    host,
+		port:    port,
+		timeout: 30 * time.Second,
+		tlsMode: tlsModeNone,
+		dialer:  &net.Dialer{},
+	}
+
+	// Apply options
+	for _, opt := range options {
+		if err := opt(c); err != nil {
+			return nil, fmt.Errorf("failed to apply option: %w", err)
+		}
+	}
+
+	// Set dialer timeout
+	c.dialer.Timeout = c.timeout
+
+	// Establish the connection
+	if err := c.connect(); err != nil {
+		return nil, err
+	}
+
+	return c, nil
+}
+
+// connect establishes the control connection and handles the initial handshake.
+func (c *Client) connect() error {
+	var err error
+
+	// For implicit TLS, wrap the connection immediately
+	if c.tlsMode == tlsModeImplicit {
+		conn, err := c.dialer.Dial("tcp", net.JoinHostPort(c.host, c.port))
+		if err != nil {
+			return fmt.Errorf("failed to connect: %w", err)
+		}
+
+		// Wrap in TLS
+		tlsConn := tls.Client(conn, c.tlsConfig)
+		if err := tlsConn.Handshake(); err != nil {
+			conn.Close()
+			return fmt.Errorf("TLS handshake failed: %w", err)
+		}
+
+		c.conn = tlsConn
+	} else {
+		// Plain connection or explicit TLS
+		c.conn, err = c.dialer.Dial("tcp", net.JoinHostPort(c.host, c.port))
+		if err != nil {
+			return fmt.Errorf("failed to connect: %w", err)
+		}
+	}
+
+	// Set up buffered reader
+	c.reader = bufio.NewReader(c.conn)
+
+	// Read the greeting (220 response)
+	resp, err := readResponse(c.reader)
+	if err != nil {
+		c.conn.Close()
+		return fmt.Errorf("failed to read greeting: %w", err)
+	}
+
+	if c.logger != nil {
+		c.logger.Debug("ftp greeting", "code", resp.Code, "message", resp.Message)
+	}
+
+	if resp.Code != 220 {
+		c.conn.Close()
+		return &ProtocolError{
+			Command:  "CONNECT",
+			Response: resp.Message,
+			Code:     resp.Code,
+		}
+	}
+
+	// For explicit TLS, upgrade the connection now
+	if c.tlsMode == tlsModeExplicit {
+		if err := c.upgradeToTLS(); err != nil {
+			c.conn.Close()
+			return err
+		}
+	}
+
+	return nil
+}
+
+// upgradeToTLS upgrades the connection to TLS using AUTH TLS.
+func (c *Client) upgradeToTLS() error {
+	// Send AUTH TLS
+	resp, err := c.sendCommand("AUTH", "TLS")
+	if err != nil {
+		return fmt.Errorf("AUTH TLS failed: %w", err)
+	}
+
+	if resp.Code != 234 {
+		return &ProtocolError{
+			Command:  "AUTH TLS",
+			Response: resp.Message,
+			Code:     resp.Code,
+		}
+	}
+
+	// Wrap the connection in TLS
+	tlsConn := tls.Client(c.conn, c.tlsConfig)
+	if err := tlsConn.Handshake(); err != nil {
+		return fmt.Errorf("TLS handshake failed: %w", err)
+	}
+
+	c.conn = tlsConn
+	c.reader = bufio.NewReader(c.conn)
+
+	// Send PBSZ 0 (required for TLS)
+	if _, err := c.expectCode(200, "PBSZ", "0"); err != nil {
+		return fmt.Errorf("PBSZ failed: %w", err)
+	}
+
+	// Send PROT P (protect data channel)
+	if _, err := c.expectCode(200, "PROT", "P"); err != nil {
+		return fmt.Errorf("PROT failed: %w", err)
+	}
+
+	return nil
+}
+
+// Login authenticates with the FTP server using the provided username and password.
+func (c *Client) Login(username, password string) error {
+	// Send USER command
+	resp, err := c.sendCommand("USER", username)
+	if err != nil {
+		return err
+	}
+
+	// If we get 230, we're already logged in (no password required)
+	if resp.Code == 230 {
+		return nil
+	}
+
+	// If we get 331, we need to send the password
+	if resp.Code != 331 {
+		return &ProtocolError{
+			Command:  "USER",
+			Response: resp.Message,
+			Code:     resp.Code,
+		}
+	}
+
+	// Send PASS command
+	if _, err := c.expectCode(230, "PASS", password); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Quit closes the connection gracefully by sending the QUIT command.
+func (c *Client) Quit() error {
+	if c.conn == nil {
+		return nil
+	}
+
+	// Send QUIT command (ignore errors, we're closing anyway)
+	_, _ = c.sendCommand("QUIT")
+
+	// Close the connection
+	return c.conn.Close()
+}
+
+// Type sets the transfer type (ASCII or Binary).
+// For binary transfers, use "I". For ASCII, use "A".
+// Binary mode is recommended for most file transfers.
+func (c *Client) Type(t string) error {
+	_, err := c.expectCode(200, "TYPE", t)
+	return err
+}
+
+// Features queries the server for supported features using the FEAT command.
+// Returns a map of feature names to their parameters (if any).
+// This implements RFC 2389 - Feature negotiation mechanism for FTP.
+//
+// Example:
+//
+//	feats, err := client.Features()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	if _, ok := feats["UTF8"]; ok {
+//	    fmt.Println("Server supports UTF8")
+//	}
+func (c *Client) Features() (map[string]string, error) {
+	// If we've already fetched features, return cached version
+	if c.features != nil {
+		return c.features, nil
+	}
+
+	resp, err := c.sendCommand("FEAT")
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.Code != 211 {
+		return nil, &ProtocolError{
+			Command:  "FEAT",
+			Response: resp.Message,
+			Code:     resp.Code,
+		}
+	}
+
+	// Parse features from multi-line response
+	// Format: "211-Features:\n FEAT1\n FEAT2 params\n211 End"
+	features := make(map[string]string)
+	for _, line := range resp.Lines {
+		// Skip the first and last lines (211-... and 211 ...)
+		if len(line) < 4 {
+			continue
+		}
+		if line[3] == '-' || line[3] == ' ' {
+			// This is the status line, skip it
+			continue
+		}
+
+		// Feature lines start with a space
+		featureLine := strings.TrimSpace(line)
+		if featureLine == "" {
+			continue
+		}
+
+		// Split feature name and parameters
+		parts := strings.SplitN(featureLine, " ", 2)
+		featName := strings.ToUpper(parts[0])
+		featParams := ""
+		if len(parts) > 1 {
+			featParams = parts[1]
+		}
+
+		features[featName] = featParams
+	}
+
+	// Cache the features
+	c.features = features
+
+	return features, nil
+}
+
+// HasFeature checks if the server supports a specific feature.
+// This is a convenience method that calls Features() if needed.
+func (c *Client) HasFeature(feature string) bool {
+	feats, err := c.Features()
+	if err != nil {
+		return false
+	}
+	_, ok := feats[strings.ToUpper(feature)]
+	return ok
+}
+
+// SetOption sets an option for a feature using the OPTS command.
+// This implements RFC 2389 - Feature negotiation mechanism for FTP.
+//
+// Example:
+//
+//	err := client.SetOption("UTF8", "ON")
+func (c *Client) SetOption(option, value string) error {
+	_, err := c.expect2xx("OPTS", option, value)
+	return err
+}
+
+// Noop sends a NOOP (no operation) command to the server.
+// This is useful as a keepalive to prevent the connection from timing out
+// during long operations or idle periods.
+//
+// Example:
+//
+//	// Keep connection alive during long processing
+//	for processing {
+//	    // ... do work ...
+//	    client.Noop()  // Prevent timeout
+//	    time.Sleep(30 * time.Second)
+//	}
+func (c *Client) Noop() error {
+	_, err := c.expect2xx("NOOP")
+	return err
+}
