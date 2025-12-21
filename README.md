@@ -127,7 +127,7 @@ if client.HasFeature("MLST") {
     // Use modern machine-readable listings
     entries, err := client.MLList("/")
     for _, entry := range entries {
-        fmt.Printf("%s: %d bytes, modified %s\n", 
+        fmt.Printf("%s: %d bytes, modified %s\n",
             entry.Name, entry.Size, entry.ModTime)
     }
 }
@@ -148,6 +148,8 @@ err = client.RetrieveFrom("large.bin", file, info.Size())
 ```
 
 ## API Reference
+
+[![Go Reference](https://pkg.go.dev/badge/github.com/gonzalop/ftp.svg)](https://pkg.go.dev/github.com/gonzalop/ftp)
 
 ### Connection Options
 
@@ -234,7 +236,7 @@ if err := client.Store("file.txt", reader); err != nil {
         fmt.Printf("Command: %s\n", pe.Command)
         fmt.Printf("Response: %s\n", pe.Response)
         fmt.Printf("Code: %d\n", pe.Code)
-        
+
         if pe.IsTemporary() {
             // Retry logic
         }
