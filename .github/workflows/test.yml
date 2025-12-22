@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main, master ]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Test
@@ -13,7 +16,7 @@ jobs:
     strategy:
       matrix:
         go-version: ['1.21', '1.22', '1.23']
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -43,7 +46,7 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
