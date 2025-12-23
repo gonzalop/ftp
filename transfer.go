@@ -5,6 +5,9 @@ import (
 	"io"
 	"net"
 	"os"
+	"path"
+	"path/filepath"
+	"strings"
 )
 
 // Store uploads data from an io.Reader to the remote path.
@@ -268,4 +271,126 @@ func (c *Client) StoreAt(remotePath string, r io.Reader, offset int64) error {
 	}
 
 	return nil
+}
+
+// UploadDir uploads a local directory to the remote server recursively.
+// It creates the remote directory structure if needed.
+//
+// Example:
+//
+//	err := client.UploadDir("local_files", "/remote/files")
+func (c *Client) UploadDir(localDir, remoteDir string) error {
+	localDir = filepath.Clean(localDir)
+
+	// Walk the local directory
+	return filepath.Walk(localDir, func(pathStr string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip symlinks for safety
+		// We don't want to accidentally upload files outside the directory
+		// that are linked to.
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil
+		}
+
+		// Calculate relative path from localDir
+		relPath, err := filepath.Rel(localDir, pathStr)
+		if err != nil {
+			return err
+		}
+
+		if relPath == "." {
+			// Don't recreate the root remoteDir, it is assumed to be the target
+			// But maybe we should create it if it doesn't exist?
+			// Let's try to create it just in case, but ignore error
+			_ = c.MakeDir(remoteDir)
+			return nil
+		}
+
+		// Construct remote path using forward slashes
+		// On Windows relPath might use backslashes, so we convert them
+		remotePath := path.Join(remoteDir, filepath.ToSlash(relPath))
+
+		if info.IsDir() {
+			// Create remote directory
+			// We try to create it. If it fails, we assume it might already exist.
+			// Ideally we would check the error code (550) but for now we'll proceed.
+			// If we really can't create it and it doesn't exist, file uploads inside will fail.
+			_ = c.MakeDir(remotePath)
+		} else {
+			// Upload file
+			file, err := os.Open(pathStr)
+			if err != nil {
+				return err
+			}
+			defer file.Close()
+
+			if err := c.Store(remotePath, file); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// DownloadDir downloads a remote directory to the local filesystem recursively.
+// It creates the local directory structure if needed.
+//
+// Example:
+//
+//	err := client.DownloadDir("/remote/files", "local_backup")
+func (c *Client) DownloadDir(remoteDir, localDir string) error {
+	// Ensure local root dir exists
+	if err := os.MkdirAll(localDir, 0755); err != nil {
+		return err
+	}
+
+	// Walk remote directory
+	return c.Walk(remoteDir, func(pathStr string, info *Entry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Calculate relative path from remoteDir
+		// path.Rel does not exist in standard library.
+		// Since we are walking, we know pathStr starts with remoteDir.
+		if !strings.HasPrefix(pathStr, remoteDir) {
+			return fmt.Errorf("invalid path in walk: %s (expected prefix %s)", pathStr, remoteDir)
+		}
+
+		relPath := strings.TrimPrefix(pathStr, remoteDir)
+		relPath = strings.TrimPrefix(relPath, "/")
+
+		if relPath == "" {
+			return nil
+		}
+
+		localPath := filepath.Join(localDir, filepath.FromSlash(relPath))
+
+		if info.Type == "dir" {
+			// Create local directory
+			if err := os.MkdirAll(localPath, 0755); err != nil {
+				return err
+			}
+		} else {
+			// File
+			// Ensure parent dir exists (should already match "dir" case, but just to be safe)
+			if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
+				return err
+			}
+
+			file, err := os.Create(localPath)
+			if err != nil {
+				return err
+			}
+			defer file.Close()
+
+			if err := c.Retrieve(pathStr, file); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

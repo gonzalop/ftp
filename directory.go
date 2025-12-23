@@ -6,10 +6,123 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// WalkFunc is the type of the function called for each file or directory
+// visited by Walk. The path argument contains the argument to Walk as a
+// prefix.
+//
+// If there was a problem walking to the file or directory, the incoming
+// error will describe the problem and the function can decide how to handle
+// that error (and Walk will not descend into that directory). In the case
+// of an error, the info argument will be nil. If an error is returned,
+// processing stops. The sole exception is when the function returns the
+// special value SkipDir. If the function returns SkipDir when invoking the
+// callback on a directory, Walk skips the directory's contents entirely.
+// If the function returns SkipDir when invoking the callback on a
+// non-directory file, Walk skips the remaining files in the containing
+// directory.
+type WalkFunc func(path string, info *Entry, err error) error
+
+// SkipDir is used as a return value from WalkFunc to indicate that
+// the directory named in the call is to be skipped. It is not returned
+// as an error by any function.
+var SkipDir = filepath.SkipDir
+
+// Walk walks the file tree rooted at root, calling walkFn for each file or
+// directory in the tree, including root. All errors that arise visiting files
+// and directories are filtered by walkFn. The files are walked in lexical
+// order, which makes the output deterministic but means that for very
+// large directories Walk can be inefficient.
+// Walk does not follow symbolic links.
+func (c *Client) Walk(root string, walkFn WalkFunc) error {
+	// Attempt to get the entry for the root itself
+	// This is tricky because LIST <root> gives contents, not the entry itself.
+	// We try to list the parent to find the root entry.
+	var rootEntry *Entry
+	// Handle root cases
+	cleanRoot := path.Clean(root)
+	if cleanRoot == "." || cleanRoot == "/" {
+		rootEntry = &Entry{
+			Name: cleanRoot,
+			Type: "dir",
+		}
+	} else {
+		// List parent to find root
+		parent := path.Dir(cleanRoot)
+		if parent == "." && !strings.Contains(cleanRoot, "/") {
+			parent = "" // Use current working directory
+		}
+		entries, err := c.List(parent)
+		if err != nil {
+			// If we can't list parent, we can't get root entry details.
+			// We'll try to proceed assuming it's a directory, but pass nil as Info first (or fake it).
+			// However, standard Walk returns error if it can't Lstat root.
+			// We'll call walkFn with the error.
+			return walkFn(root, nil, err)
+		}
+		targetName := path.Base(cleanRoot)
+		for _, e := range entries {
+			if e.Name == targetName {
+				rootEntry = e
+				break
+			}
+		}
+		if rootEntry == nil {
+			// Not found in parent? Maybe it doesn't exist.
+			return walkFn(root, nil, os.ErrNotExist)
+		}
+	}
+
+	return c.walk(cleanRoot, rootEntry, walkFn)
+}
+
+func (c *Client) walk(pathStr string, info *Entry, walkFn WalkFunc) error {
+	err := walkFn(pathStr, info, nil)
+	if err != nil {
+		if info != nil && info.Type == "dir" && err == SkipDir {
+			return nil
+		}
+		return err
+	}
+
+	// If not a directory, stop
+	if info == nil || info.Type != "dir" {
+		return nil
+	}
+
+	// List children
+	entries, err := c.List(pathStr)
+	if err != nil {
+		return walkFn(pathStr, info, err)
+	}
+
+	for _, entry := range entries {
+		// Skip . and .. just in case
+		if entry.Name == "." || entry.Name == ".." {
+			continue
+		}
+
+		fullPath := path.Join(pathStr, entry.Name)
+		if err := c.walk(fullPath, entry, walkFn); err != nil {
+			if err == SkipDir {
+				// Skip directory requested by one of the children?
+				// No, SkipDir from child only skips that child directory.
+				// But if c.walk returned SkipDir, it means the child was a dir and requested skip.
+				// We just continue to next sibling.
+				continue
+			}
+			return err
+		}
+	}
+
+	return nil
+}
 
 // Entry represents a file or directory entry from a LIST command.
 type Entry struct {

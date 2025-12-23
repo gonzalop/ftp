@@ -23,6 +23,7 @@ A production-ready FTP client library for Go with comprehensive TLS support, pro
 - **File Metadata (MDTM)** - Get file modification times (RFC 3659)
 - **Resume Support (REST)** - Resume interrupted transfers (RFC 3659)
 - **Machine-Readable Listings (MLST/MLSD)** - Structured directory listings (RFC 3659)
+- **Recursive Operations** - Walk, UploadDir, DownloadDir helpers
 
 ## RFC Compliance
 
@@ -197,6 +198,45 @@ fmt.Printf("SHA-256 Hash: %s\n", hash)
 // Send a raw command to the server
 resp, err := client.Quote("SITE", "CHMOD", "755", "script.sh")
 fmt.Printf("Response: %s\n", resp.Message)
+```
+
+### Recursive Operations
+
+The library provides high-level helpers for recursive file management:
+
+#### Walk Remote Directory
+
+Recurse through a remote directory tree, similar to `filepath.Walk`:
+
+```go
+err := client.Walk("/remote/dir", func(path string, info *ftp.Entry, err error) error {
+    if err != nil {
+        return err // Handle error
+    }
+    fmt.Printf("Visited: %s\n", path)
+    if info.Type == "dir" {
+        fmt.Println("Is Directory")
+    }
+    return nil
+})
+```
+
+#### Upload Directory
+
+Recursively upload a local directory to the server:
+
+```go
+// Upload "local_data" to "/remote/backup"
+err := client.UploadDir("local_data", "/remote/backup")
+```
+
+#### Download Directory
+
+Recursively download a remote directory to the local filesystem:
+
+```go
+// Download "/remote/logs" to "local_logs"
+err := client.DownloadDir("/remote/logs", "local_logs")
 ```
 
 ## API Reference
