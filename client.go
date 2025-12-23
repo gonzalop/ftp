@@ -304,20 +304,30 @@ func (c *Client) Features() (map[string]string, error) {
 	}
 
 	// Parse features from multi-line response
-	// Format: "211-Features:\n FEAT1\n FEAT2 params\n211 End"
+	c.features = parseFeatureLines(resp.Lines)
+	return c.features, nil
+}
+
+// parseFeatureLines parses the lines of a FEAT response.
+// Supports both formats:
+// - RFC 2389: "211-Features:\r\n FEAT1\r\n FEAT2 params\r\n211 End"
+// - Traditional: "211-Features\r\n211-FEAT1\r\n211-FEAT2 params\r\n211 End"
+func parseFeatureLines(lines []string) map[string]string {
 	features := make(map[string]string)
-	for _, line := range resp.Lines {
-		// Skip the first and last lines (211-... and 211 ...)
-		if len(line) < 4 {
+	for _, line := range lines {
+		var featureLine string
+
+		// Handle RFC 2389 format: lines starting with space
+		if len(line) > 0 && line[0] == ' ' {
+			featureLine = strings.TrimSpace(line)
+		} else if len(line) >= 4 && (line[3] == '-' || line[3] == ' ') {
+			// Skip status lines (e.g., "211-Features:" or "211 End")
 			continue
-		}
-		if line[3] == '-' || line[3] == ' ' {
-			// This is the status line, skip it
+		} else {
+			// Skip any other malformed lines
 			continue
 		}
 
-		// Feature lines start with a space
-		featureLine := strings.TrimSpace(line)
 		if featureLine == "" {
 			continue
 		}
@@ -332,11 +342,7 @@ func (c *Client) Features() (map[string]string, error) {
 
 		features[featName] = featParams
 	}
-
-	// Cache the features
-	c.features = features
-
-	return features, nil
+	return features
 }
 
 // HasFeature checks if the server supports a specific feature.

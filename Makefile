@@ -28,4 +28,7 @@ test:
 
 fuzz:
 	@echo "Running fuzz tests..."
-	go test -fuzz=FuzzParseListLine -fuzztime=10s .
+	# Fuzz directory listing parser (run for 10 seconds)
+	go test -fuzz=FuzzParseListLine -fuzztime=10s
+	# Fuzz feature parser (run for 10 seconds)
+	go test -fuzz=FuzzParseFeatures -fuzztime=10s

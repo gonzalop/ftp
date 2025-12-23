@@ -263,3 +263,26 @@ func TestProtocolError(t *testing.T) {
 		t.Errorf("ProtocolError.Error() = %q, want %q", err.Error(), expectedMsg)
 	}
 }
+
+func TestReadResponse_RFC2389(t *testing.T) {
+	// Example from RFC 2389 - feature lines start with space
+	response := "211-Extensions supported:\r\n" +
+		" MLST size*;create;modify*;perm;media-type\r\n" +
+		" SIZE\r\n" +
+		" COMPRESSION\r\n" +
+		" MDTM\r\n" +
+		"211 END\r\n"
+
+	reader := bufio.NewReader(strings.NewReader(response))
+	resp, err := readResponse(reader)
+	if err != nil {
+		t.Fatalf("readResponse failed on RFC 2389 payload: %v", err)
+	}
+
+	if resp.Code != 211 {
+		t.Errorf("expected code 211, got %d", resp.Code)
+	}
+	if len(resp.Lines) != 6 {
+		t.Errorf("expected 6 lines, got %d", len(resp.Lines))
+	}
+}
