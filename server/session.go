@@ -309,10 +309,12 @@ func (s *session) connData() (net.Conn, error) {
 				conn.Close()
 				return nil, err
 			}
-			return tlsConn, nil
+			conn = tlsConn
 		}
 
-		return conn, nil
+		// Track data connection
+		s.server.trackConnection(conn, true)
+		return &trackingConn{Conn: conn, server: s.server}, nil
 	}
 
 	if s.activeIP != "" {
@@ -336,10 +338,12 @@ func (s *session) connData() (net.Conn, error) {
 				conn.Close()
 				return nil, err
 			}
-			return tlsConn, nil
+			conn = tlsConn
 		}
 
-		return conn, nil
+		// Track data connection
+		s.server.trackConnection(conn, true)
+		return &trackingConn{Conn: conn, server: s.server}, nil
 	}
 
 	return nil, fmt.Errorf("no data connection setup")

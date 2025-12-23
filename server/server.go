@@ -2,9 +2,11 @@ package server
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -64,7 +66,17 @@ type Server struct {
 
 	// activeConns tracks the number of currently active connections.
 	activeConns atomic.Int32
+
+	// Shutdown handling
+	mu         sync.Mutex
+	listener   net.Listener
+	conns      map[net.Conn]struct{}
+	inShutdown atomic.Bool
 }
+
+// ErrServerClosed is returned by the Server's Serve, ServeTLS, ListenAndServe,
+// and ListenAndServeTLS methods after a call to Shutdown or Close.
+var ErrServerClosed = errors.New("ftp: Server closed")
 
 // NewServer creates a new FTP server with the given address and options.
 // The address should be in the form ":port" or "host:port".
@@ -108,6 +120,7 @@ func NewServer(addr string, options ...Option) (*Server, error) {
 		addr:        addr,
 		logger:      slog.Default(),
 		maxIdleTime: 5 * time.Minute,
+		conns:       make(map[net.Conn]struct{}),
 	}
 
 	// Apply options
@@ -140,6 +153,37 @@ func (s *Server) ListenAndServe() error {
 	return s.Serve(ln)
 }
 
+// Shutdown stops the server.
+//
+// It closes the listener and immediately closes all active connections.
+func (s *Server) Shutdown() error {
+	s.inShutdown.Store(true)
+
+	s.mu.Lock()
+	ln := s.listener
+	s.listener = nil
+	s.mu.Unlock()
+
+	var err error
+	if ln != nil {
+		err = ln.Close()
+	}
+
+	// Close all active connections (control and data)
+	s.mu.Lock()
+	var conns []net.Conn
+	for conn := range s.conns {
+		conns = append(conns, conn)
+	}
+	s.mu.Unlock()
+
+	for _, conn := range conns {
+		conn.Close()
+	}
+
+	return err
+}
+
 // Serve accepts incoming connections on the listener l.
 // It blocks until the listener is closed or an error occurs.
 //
@@ -155,11 +199,30 @@ func (s *Server) ListenAndServe() error {
 //	}()
 //	s.Serve(ln)
 func (s *Server) Serve(l net.Listener) error {
-	defer l.Close()
+	s.mu.Lock()
+	if s.inShutdown.Load() {
+		s.mu.Unlock()
+		l.Close()
+		return ErrServerClosed
+	}
+	s.listener = l
+	s.mu.Unlock()
+
+	defer func() {
+		s.mu.Lock()
+		if s.listener == l {
+			s.listener = nil
+		}
+		s.mu.Unlock()
+		l.Close()
+	}()
 
 	for {
 		conn, err := l.Accept()
 		if err != nil {
+			if s.inShutdown.Load() {
+				return ErrServerClosed
+			}
 			s.logger.Error("accept error", "error", err)
 			continue
 		}
@@ -170,8 +233,42 @@ func (s *Server) Serve(l net.Listener) error {
 
 // handleConnection handles a new client connection.
 func (s *Server) handleConnection(conn net.Conn) {
+	if s.inShutdown.Load() {
+		conn.Close()
+		return
+	}
+
+	s.trackConnection(conn, true)
+	defer s.trackConnection(conn, false)
+
 	// Create a new session for this connection
 	s.handleSession(conn)
+}
+
+func (s *Server) trackConnection(conn net.Conn, add bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if add {
+		if s.inShutdown.Load() {
+			conn.Close()
+			return
+		}
+		s.conns[conn] = struct{}{}
+	} else {
+		delete(s.conns, conn)
+	}
+}
+
+// trackingConn wraps a net.Conn to track its lifetime in the server.
+type trackingConn struct {
+	net.Conn
+	server *Server
+}
+
+func (c *trackingConn) Close() error {
+	c.server.trackConnection(c.Conn, false)
+	return c.Conn.Close()
 }
 
 // handleSession handles a new client connection.
