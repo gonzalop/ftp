@@ -121,6 +121,33 @@ tlsListener := tls.NewListener(l, tlsConfig)
 server.Serve(tlsListener)
 ```
 
+#### Client Authentication (mTLS)
+
+To require or verify client certificates, configure `ClientCAs` and `ClientAuth` in the `tls.Config` passed to `WithTLS`:
+
+```go
+// Load CA cert to trust
+caCert, _ := os.ReadFile("ca.crt")
+caPool := x509.NewCertPool()
+caPool.AppendCertsFromPEM(caCert)
+
+// Load server cert
+cert, _ := tls.LoadX509KeyPair("server.crt", "server.key")
+
+config := &tls.Config{
+    Certificates: []tls.Certificate{cert},
+    ClientCAs:    caPool,
+    ClientAuth:   tls.RequireAndVerifyClientCert, // or VerifyClientCertIfGiven
+}
+
+server, _ := server.NewServer(":21",
+    server.WithDriver(driver),
+    server.WithTLS(config),
+)
+```
+
+
+
 ### Authentication & Virtual Hosting
 
 You can customize authentication and support virtual hosts using the `Authenticator` hook in `FSDriver`. This allows you to serve different directories based on the username or the `HOST` provided by the client (RFC 7151).

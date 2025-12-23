@@ -89,6 +89,28 @@ client, err := ftp.Dial("ftp.example.com:21",
 )
 ```
 
+### Client Certificates & mTLS
+ 
+ To authenticate with a client certificate (mutual TLS), provide a custom `tls.Config` with the `Certificates` field set:
+ 
+ ```go
+ // Load cert/key
+ cert, err := tls.LoadX509KeyPair("client.crt", "client.key")
+ if err != nil {
+     log.Fatal(err)
+ }
+ 
+ client, err := ftp.Dial("ftp.example.com:21",
+     ftp.WithExplicitTLS(&tls.Config{
+         ServerName:   "ftp.example.com",
+         Certificates: []tls.Certificate{cert},
+     }),
+     ftp.WithTimeout(10*time.Second),
+ )
+ ```
+
+
+
 ### Upload with Progress Tracking
 
 ```go

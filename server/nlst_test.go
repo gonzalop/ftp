@@ -3,6 +3,7 @@ package server
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -69,13 +70,7 @@ func TestNLST(t *testing.T) {
 	}
 
 	for _, f := range files {
-		found := false
-		for _, e := range entries {
-			if e == f {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(entries, f)
 		if !found {
 			t.Errorf("Expected file %q not found in NLST response", f)
 		}

@@ -53,17 +53,18 @@ func TestRFC1123Compliance(t *testing.T) {
 		var msg string
 		_, _ = fmt.Sscanf(line, "%d %s", &code, &msg)
 		// Read multi-line responses
-		fullMsg := line
+		var fullMsg strings.Builder
+		fullMsg.WriteString(line)
 		if len(line) >= 4 && line[3] == '-' {
 			for {
 				line, _ = reader.ReadString('\n')
-				fullMsg += line
+				fullMsg.WriteString(line)
 				if len(line) >= 4 && line[3] == ' ' {
 					break
 				}
 			}
 		}
-		return code, strings.TrimSpace(fullMsg)
+		return code, strings.TrimSpace(fullMsg.String())
 	}
 
 	// Read welcome
