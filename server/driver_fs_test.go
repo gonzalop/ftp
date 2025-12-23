@@ -97,7 +97,9 @@ func TestNewFSDriver_Validation(t *testing.T) {
 			setupPath: func(t *testing.T) string {
 				dir := t.TempDir()
 				file := filepath.Join(dir, "file.txt")
-				os.WriteFile(file, []byte("test"), 0644)
+				if err := os.WriteFile(file, []byte("test"), 0644); err != nil {
+					t.Fatal(err)
+				}
 				return file
 			},
 			expectError: true,
@@ -122,7 +124,9 @@ func TestNewFSDriver_Validation(t *testing.T) {
 func TestFSDriver_CustomAuthenticator(t *testing.T) {
 	tempDir := t.TempDir()
 	userDir := filepath.Join(tempDir, "user1")
-	os.MkdirAll(userDir, 0755)
+	if err := os.MkdirAll(userDir, 0755); err != nil {
+		t.Fatal(err)
+	}
 
 	driver, err := NewFSDriver(tempDir,
 		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
@@ -179,8 +183,12 @@ func TestFSContext_PathSecurity(t *testing.T) {
 	defer ctx.Close()
 
 	// Create a test directory structure
-	os.MkdirAll(filepath.Join(tempDir, "subdir"), 0755)
-	os.WriteFile(filepath.Join(tempDir, "file.txt"), []byte("test"), 0644)
+	if err := os.MkdirAll(filepath.Join(tempDir, "subdir"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tempDir, "file.txt"), []byte("test"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	tests := []struct {
 		name        string
@@ -242,7 +250,9 @@ func TestFSContext_FileOperations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenFile failed: %v", err)
 	}
-	f.Write([]byte("test content"))
+	if _, err := f.Write([]byte("test content")); err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
 	f.Close()
 
 	// Test file reading
@@ -316,7 +326,9 @@ func TestFSContext_ReadOnly(t *testing.T) {
 func TestFSContext_GetHash(t *testing.T) {
 	tempDir := t.TempDir()
 	testFile := filepath.Join(tempDir, "test.txt")
-	os.WriteFile(testFile, []byte("test content"), 0644)
+	if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	driver, err := NewFSDriver(tempDir)
 	if err != nil {
