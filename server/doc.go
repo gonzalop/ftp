@@ -176,6 +176,52 @@
 //	    server.WithLogger(logger),
 //	)
 //
+// # Logging and Observability
+//
+// The server provides structured logging with rich context for debugging,
+// security auditing, and compliance.
+//
+// Structured Log Fields:
+//
+//   - session_id: Unique identifier for each client connection (8-char hex)
+//   - remote_ip: Client IP address
+//   - user: Authenticated username (when logged in)
+//   - cmd: FTP command being executed
+//   - error: Error details (when applicable)
+//
+// Security Audit Events:
+//
+// Authentication (INFO/WARN level):
+//
+//	INFO authentication_success session_id=abc123 remote_ip=192.168.1.100 user=john
+//	WARN authentication_failed session_id=abc123 remote_ip=192.168.1.100 user=john reason="invalid password"
+//
+// File Operations (INFO level):
+//
+//	INFO file_uploaded session_id=abc123 remote_ip=192.168.1.100 user=john path=/documents/report.pdf
+//	INFO file_deleted session_id=abc123 remote_ip=192.168.1.100 user=john path=/old/file.txt
+//	INFO directory_created session_id=abc123 remote_ip=192.168.1.100 user=john path=/new_folder
+//	INFO directory_removed session_id=abc123 remote_ip=192.168.1.100 user=john path=/temp
+//
+// Connection Events (WARN level):
+//
+//	WARN connection_rejected remote_ip=192.168.1.100 reason=global_limit_reached limit=100
+//	WARN connection_rejected remote_ip=192.168.1.100 reason=per_ip_limit_reached limit=10
+//
+// Using session_id for correlation:
+//
+// All logs from a single client session share the same session_id, making it
+// easy to trace user activity:
+//
+//	# Filter all logs for a specific session
+//	grep "session_id=abc123" server.log
+//
+//	# Find all failed authentication attempts
+//	grep "authentication_failed" server.log
+//
+//	# Track file modifications by a specific user
+//	grep "user=john" server.log | grep -E "(file_uploaded|file_deleted|directory_)"
+//
 // # Troubleshooting
 //
 // Common issues and solutions:

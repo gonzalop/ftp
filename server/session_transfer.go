@@ -107,6 +107,14 @@ func (s *session) handleSTOR(path string) {
 		return
 	}
 
+	// Security audit: file uploaded
+	s.server.logger.Info("file_uploaded",
+		"session_id", s.sessionID,
+		"remote_ip", s.remoteIP,
+		"user", s.user,
+		"path", path,
+	)
+
 	s.restartOffset = 0
 	s.reply(226, "Transfer complete.")
 }

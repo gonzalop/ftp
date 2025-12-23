@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"crypto/rand"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -21,6 +22,10 @@ type session struct {
 	conn   net.Conn
 	reader *bufio.Reader
 	writer *bufio.Writer
+
+	// Session tracking
+	sessionID string
+	remoteIP  string
 
 	// State
 	isLoggedIn    bool
@@ -60,13 +65,32 @@ func (s *session) validateActiveIP(ip net.IP) bool {
 	return ip.Equal(remoteIP)
 }
 
+// generateSessionID generates a unique 8-character session ID.
+func generateSessionID() string {
+	b := make([]byte, 4)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("%08x", b)
+}
+
 // newSession creates a new session.
 func newSession(server *Server, conn net.Conn) *session {
+	// Generate unique session ID
+	sessionID := generateSessionID()
+
+	// Extract remote IP
+	remoteAddr := conn.RemoteAddr().String()
+	remoteIP, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		remoteIP = remoteAddr // Fallback to full address
+	}
+
 	s := &session{
 		server:       server,
 		conn:         conn,
 		reader:       bufio.NewReader(newTelnetReader(conn)),
 		writer:       bufio.NewWriter(conn),
+		sessionID:    sessionID,
+		remoteIP:     remoteIP,
 		prot:         "C", // Default to clear
 		selectedHash: "SHA-256",
 	}
@@ -108,7 +132,12 @@ func (s *session) serve() {
 		line, err := s.readCommand()
 		if err != nil {
 			if err != io.EOF && err.Error() != "command too long" {
-				s.server.logger.Warn("read error", "remote", s.conn.RemoteAddr(), "error", err)
+				s.server.logger.Warn("read error",
+					"session_id", s.sessionID,
+					"remote_ip", s.remoteIP,
+					"user", s.user,
+					"error", err,
+				)
 			}
 			if err.Error() == "command too long" {
 				s.reply(500, "Command line too long.")
@@ -165,7 +194,11 @@ func (s *session) close() {
 		s.dataConn.Close()
 	}
 	s.conn.Close()
-	s.server.logger.Debug("session closed", "remote", s.conn.RemoteAddr())
+	s.server.logger.Debug("session closed",
+		"session_id", s.sessionID,
+		"remote_ip", s.remoteIP,
+		"user", s.user,
+	)
 }
 
 // handleCommand parses and dispatches a command.
@@ -186,7 +219,13 @@ func (s *session) handleCommand(line string) {
 	if cmd == "PASS" {
 		logArg = "***"
 	}
-	s.server.logger.Debug("command received", "cmd", cmd, "arg", logArg)
+	s.server.logger.Debug("command received",
+		"session_id", s.sessionID,
+		"remote_ip", s.remoteIP,
+		"user", s.user,
+		"cmd", cmd,
+		"arg", logArg,
+	)
 
 	var err error
 	switch cmd {
@@ -298,13 +337,22 @@ func (s *session) handleCommand(line string) {
 	}
 
 	if err != nil {
-		s.server.logger.Error("command handling error", "cmd", cmd, "error", err)
+		s.server.logger.Error("command handling error",
+			"session_id", s.sessionID,
+			"remote_ip", s.remoteIP,
+			"user", s.user,
+			"cmd", cmd,
+			"error", err,
+		)
 	}
 }
 
 func (s *session) connData() (net.Conn, error) {
 	if s.pasvList != nil {
-		s.server.logger.Debug("waiting for passive connection")
+		s.server.logger.Debug("waiting for passive connection",
+			"session_id", s.sessionID,
+			"remote_ip", s.remoteIP,
+		)
 		// Set a deadline for the client to connect
 		if t, ok := s.pasvList.(*net.TCPListener); ok {
 			_ = t.SetDeadline(time.Now().Add(10 * time.Second))
@@ -345,7 +393,11 @@ func (s *session) connData() (net.Conn, error) {
 
 	if s.activeIP != "" {
 		addr := net.JoinHostPort(s.activeIP, strconv.Itoa(s.activePort))
-		s.server.logger.Debug("dialing active connection", "addr", addr)
+		s.server.logger.Debug("dialing active connection",
+			"session_id", s.sessionID,
+			"remote_ip", s.remoteIP,
+			"addr", addr,
+		)
 		conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
 		if err != nil {
 			return nil, err

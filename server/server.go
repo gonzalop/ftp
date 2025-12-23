@@ -332,6 +332,14 @@ func (c *trackingConn) Close() error {
 func (s *Server) handleSession(conn net.Conn) {
 	// Check global connection limit
 	if s.maxConnections > 0 && s.activeConns.Load() >= int32(s.maxConnections) {
+		// Security audit: connection limit reached
+		remoteAddr := conn.RemoteAddr().String()
+		ip, _, _ := net.SplitHostPort(remoteAddr)
+		s.logger.Warn("connection_rejected",
+			"remote_ip", ip,
+			"reason", "global_limit_reached",
+			"limit", s.maxConnections,
+		)
 		// Send 421 service not available
 		fmt.Fprintf(conn, "421 Too many users, sorry.\r\n")
 		conn.Close()
@@ -352,6 +360,12 @@ func (s *Server) handleSession(conn net.Conn) {
 		currentCount := s.connsByIP[ip]
 		if currentCount >= int32(s.maxConnectionsPerIP) {
 			s.connsByIPMu.Unlock()
+			// Security audit: per-IP connection limit reached
+			s.logger.Warn("connection_rejected",
+				"remote_ip", ip,
+				"reason", "per_ip_limit_reached",
+				"limit", s.maxConnectionsPerIP,
+			)
 			fmt.Fprintf(conn, "421 Too many connections from your IP address.\r\n")
 			conn.Close()
 			return

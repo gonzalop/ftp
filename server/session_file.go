@@ -102,6 +102,13 @@ func (s *session) handleMKD(path string) {
 		s.replyError(err)
 		return
 	}
+	// Security audit: directory created
+	s.server.logger.Info("directory_created",
+		"session_id", s.sessionID,
+		"remote_ip", s.remoteIP,
+		"user", s.user,
+		"path", path,
+	)
 	// RFC 959: 257 "PATHNAME" created.
 	// Quote the path.
 	s.reply(257, fmt.Sprintf("%q created.", path))
@@ -116,6 +123,13 @@ func (s *session) handleRMD(path string) {
 		s.replyError(err)
 		return
 	}
+	// Security audit: directory removed
+	s.server.logger.Info("directory_removed",
+		"session_id", s.sessionID,
+		"remote_ip", s.remoteIP,
+		"user", s.user,
+		"path", path,
+	)
 	s.reply(250, "Directory removed.")
 }
 
@@ -128,6 +142,13 @@ func (s *session) handleDELE(path string) {
 		s.replyError(err)
 		return
 	}
+	// Security audit: file deleted
+	s.server.logger.Info("file_deleted",
+		"session_id", s.sessionID,
+		"remote_ip", s.remoteIP,
+		"user", s.user,
+		"path", path,
+	)
 	s.reply(250, "File deleted.")
 }
 
