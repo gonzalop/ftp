@@ -1,11 +1,54 @@
-# FTP Client Library for Go
+# FTP Library for Go
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/gonzalop/ftp.svg)](https://pkg.go.dev/github.com/gonzalop/ftp)
 [![Tests](https://github.com/gonzalop/ftp/workflows/Tests/badge.svg)](https://github.com/gonzalop/ftp/actions)
 [![Go Report Card](https://goreportcard.com/badge/github.com/gonzalop/ftp)](https://goreportcard.com/report/github.com/gonzalop/ftp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+A comprehensive, production-ready FTP library providing both **client** and **server** implementations with extensive RFC compliance.
+
+## 📦 Packages
+
+### FTP Client - `github.com/gonzalop/ftp`
+Production-ready FTP client with TLS support, progress tracking, and a developer-friendly API.
+
+**Quick Install:** `go get github.com/gonzalop/ftp`
+
+**RFC Compliance:**
+- ✅ RFC 959 (Base FTP Protocol)
+- ✅ RFC 2389 (Feature Negotiation - FEAT)
+- ✅ RFC 2428 (IPv6 Support - EPSV/EPRT)
+- ✅ RFC 3659 (Extensions - MLST/MLSD, SIZE, MDTM, REST)
+- ✅ RFC 4217 (Securing FTP with TLS)
+- ✅ RFC 5797 (FTP Command and Extension Registry) - [Compliance Matrix](RFC5797-compliance.md)
+
+**[📖 Documentation below](#ftp-client-documentation)**
+
+---
+
+### FTP Server - `github.com/gonzalop/ftp/server`
+Flexible, embeddable FTP server with pluggable storage backends (filesystem, S3, custom).
+
+**Quick Install:** `go get github.com/gonzalop/ftp/server`
+
+**RFC Compliance:**
+- ✅ RFC 959 (Base FTP Protocol)
+- ✅ RFC 1123 (Requirements for Internet Hosts)
+- ✅ RFC 2389 (Feature Negotiation - FEAT, OPTS)
+- ✅ RFC 2428 (IPv6 Support - EPSV/EPRT)
+- ✅ RFC 3659 (Extensions - MLST/MLSD, SIZE, MDTM, REST)
+- ✅ RFC 4217 (Securing FTP with TLS)
+- ✅ RFC 7151 (HOST Command for Virtual Hosting)
+- ✅ draft-bryan-ftp-hash (HASH Command - SHA-256, SHA-512, MD5, etc.)
+
+**[📖 Server Documentation →](./server/README.md)** | **[Compliance Details →](./server/RFC5797-compliance.md)**
+
+---
+
+## FTP Client Documentation
+
 A production-ready FTP client library with comprehensive TLS support, progress tracking, and a developer-friendly API.
+
 
 ## Features
 
