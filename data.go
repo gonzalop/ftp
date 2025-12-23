@@ -26,16 +26,26 @@ func parsePASV(response string) (string, error) {
 		return "", fmt.Errorf("invalid PASV response: %s", response)
 	}
 
-	// Parse the IP address
-	h1, _ := strconv.Atoi(matches[1])
-	h2, _ := strconv.Atoi(matches[2])
-	h3, _ := strconv.Atoi(matches[3])
-	h4, _ := strconv.Atoi(matches[4])
-	host := fmt.Sprintf("%d.%d.%d.%d", h1, h2, h3, h4)
+	// Parse and validate the IP address parts
+	var h [4]int
+	for i := range 4 {
+		val, err := strconv.Atoi(matches[i+1])
+		if err != nil || val < 0 || val > 255 {
+			return "", fmt.Errorf("invalid PASV IP part: %s", matches[i+1])
+		}
+		h[i] = val
+	}
+	host := fmt.Sprintf("%d.%d.%d.%d", h[0], h[1], h[2], h[3])
+	if ip := net.ParseIP(host); ip == nil || ip.To4() == nil {
+		return "", fmt.Errorf("invalid IPv4 address from PASV: %s", host)
+	}
 
-	// Parse the port
-	p1, _ := strconv.Atoi(matches[5])
-	p2, _ := strconv.Atoi(matches[6])
+	// Parse and validate the port parts
+	p1, err1 := strconv.Atoi(matches[5])
+	p2, err2 := strconv.Atoi(matches[6])
+	if err1 != nil || err2 != nil || p1 < 0 || p1 > 255 || p2 < 0 || p2 > 255 {
+		return "", fmt.Errorf("invalid PASV port parts: %s, %s", matches[5], matches[6])
+	}
 	port := p1*256 + p2
 
 	return net.JoinHostPort(host, strconv.Itoa(port)), nil
@@ -48,6 +58,11 @@ func parseEPSV(response string) (string, error) {
 	matches := epsvRegex.FindStringSubmatch(response)
 	if len(matches) != 2 {
 		return "", fmt.Errorf("invalid EPSV response: %s", response)
+	}
+
+	port, err := strconv.Atoi(matches[1])
+	if err != nil || port < 0 || port > 65535 {
+		return "", fmt.Errorf("invalid EPSV port: %s", matches[1])
 	}
 
 	return matches[1], nil

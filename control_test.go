@@ -133,6 +133,18 @@ func TestParsePASV(t *testing.T) {
 			wantAddr: "",
 			wantErr:  true,
 		},
+		{
+			name:     "PASV with invalid IP parts",
+			input:    "227 Entering Passive Mode (300,168,1,1,195,149)",
+			wantAddr: "",
+			wantErr:  true,
+		},
+		{
+			name:     "PASV with 0.0.0.0 IP",
+			input:    "227 Entering Passive Mode (0,0,0,0,195,149)",
+			wantAddr: "0.0.0.0:50069",
+			wantErr:  false,
+		},
 	}
 
 	for _, tt := range tests {

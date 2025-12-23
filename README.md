@@ -207,6 +207,27 @@ The `List()` command supports multiple directory listing formats for maximum com
 
 For standardized, machine-readable listings, use `MLList()` instead (requires server support for MLSD).
 
+#### Custom Listing Parsers
+
+For non-standard listing formats, you can implement a custom parser and register it with `Dial`:
+
+```go
+// 1. Implement ListingParser interface
+type MyParser struct{}
+
+func (p *MyParser) Parse(line string) (*ftp.Entry, bool) {
+    if isMyFormat(line) {
+        return parseMyFormat(line), true
+    }
+    return nil, false
+}
+
+// 2. Register with Dial
+client, err := ftp.Dial("ftp.example.com:21",
+    ftp.WithCustomListParser(&MyParser{}),
+)
+```
+
 ### Feature Negotiation
 
 - `Features()` - Query server capabilities (FEAT)
@@ -225,6 +246,8 @@ For standardized, machine-readable listings, use `MLList()` instead (requires se
 ## TLS Session Reuse
 
 Many modern FTP servers (vsftpd, ProFTPD) require TLS session reuse between control and data connections for security. This library automatically handles session reuse using a shared `tls.ClientSessionCache`. No additional configuration is required.
+
+When TLS is enabled, the library automatically enables data channel protection (PROT P) for all data connections, ensuring that file transfers and listings are encrypted.
 
 ## Error Handling
 

@@ -63,7 +63,7 @@ func (c *Client) List(path string) ([]*Entry, error) {
 	scanner := bufio.NewScanner(dataConn)
 	for scanner.Scan() {
 		line := scanner.Text()
-		entry := parseListLine(line)
+		entry := parseListLine(line, c.parsers)
 		if entry != nil {
 			entries = append(entries, entry)
 		}
@@ -82,63 +82,101 @@ func (c *Client) List(path string) ([]*Entry, error) {
 	return entries, nil
 }
 
-// parseListLine parses a single line from a LIST response.
-// This parser handles Unix-style, DOS/Windows-style, and EPLF formats.
-func parseListLine(line string) *Entry {
-	// Handle empty or whitespace-only lines
+// ListingParser is an interface for parsing directory listing entries.
+type ListingParser interface {
+	Parse(line string) (*Entry, bool)
+}
+
+// UnixParser parses Unix-style directory entries.
+type UnixParser struct{}
+
+func (p *UnixParser) Parse(line string) (*Entry, bool) {
+	fields := strings.Fields(line)
+	// Supports both 9-field and 8-field formats (and numeric perms)
+	if len(fields) < 8 {
+		return nil, false
+	}
+	entry := &Entry{Raw: line}
+	if parseUnixEntry(entry, fields) {
+		return entry, true
+	}
+	return nil, false
+}
+
+// DOSParser parses DOS/Windows-style directory entries.
+type DOSParser struct{}
+
+func (p *DOSParser) Parse(line string) (*Entry, bool) {
+	fields := strings.Fields(line)
+	if len(fields) < 4 {
+		return nil, false
+	}
+	if !isDOSDate(fields[0]) {
+		return nil, false
+	}
+	entry := &Entry{Raw: line}
+	if parseDOSEntry(entry, fields) {
+		return entry, true
+	}
+	return nil, false
+}
+
+// EPLFParser parses EPLF entries.
+type EPLFParser struct{}
+
+func (p *EPLFParser) Parse(line string) (*Entry, bool) {
+	if !strings.HasPrefix(line, "+") {
+		return nil, false
+	}
+	entry := &Entry{Raw: line}
+	if parseEPLFEntry(entry, line) {
+		return entry, true
+	}
+	return nil, false
+}
+
+// CompositeParser tries multiple parsers in order.
+type CompositeParser struct {
+	Parsers []ListingParser
+}
+
+func (p *CompositeParser) Parse(line string) *Entry {
 	trimmed := strings.TrimSpace(line)
 	if trimmed == "" {
 		if line != "" {
-			slog.Debug("Skipping whitespace-only line",
-				"raw", line)
+			slog.Debug("Skipping whitespace-only line", "raw", line)
 		}
 		return nil
 	}
 
-	entry := &Entry{Raw: line}
-
-	// Try EPLF format first (starts with '+')
-	// Example: "+i8388621.48594,m825718503,r,s280,\tdjb.html"
-	if strings.HasPrefix(trimmed, "+") {
-		if parseEPLFEntry(entry, trimmed) {
-			return entry
-		}
-		slog.Debug("EPLF format detected but parsing failed",
-			"raw", line)
-	}
-
-	fields := strings.Fields(line)
-
-	// Try DOS/Windows-style listing
-	// Example: "12-14-23  12:22PM           1037794 large-document.pdf"
-	// Example: "09-24-24  10:30AM       <DIR>          logger"
-	// Format: date time size-or-<DIR> filename
-	if len(fields) >= 4 && isDOSDate(fields[0]) {
-		if parseDOSEntry(entry, fields) {
-			return entry
-		}
-		// DOS date detected but parsing failed
-		slog.Debug("DOS date format detected but parsing failed",
-			"raw", line,
-			"fields", fields)
-	}
-
-	// Try Unix-style listing
-	// Supports both 9-field (with group) and 8-field (without group) formats
-	// Also handles numeric permissions (e.g., "644" instead of "-rw-r--r--")
-	if len(fields) >= 8 {
-		if parseUnixEntry(entry, fields) {
+	for _, parser := range p.Parsers {
+		if entry, ok := parser.Parse(trimmed); ok {
 			return entry
 		}
 	}
 
-	// If we can't parse it, just return the raw line as the name
-	slog.Debug("Unable to parse LIST line, unknown format",
-		"raw", line,
-		"field_count", len(fields))
-	entry.Name = line
-	entry.Type = "unknown"
-	return entry
+	// Fallback
+	slog.Debug("Unable to parse LIST line, unknown format", "raw", line)
+	return &Entry{
+		Raw:  line,
+		Name: line,
+		Type: "unknown",
+	}
+}
+
+// parseListLine parses a single line using registered parsers.
+func parseListLine(line string, parsers []ListingParser) *Entry {
+	if len(parsers) == 0 {
+		parsers = []ListingParser{
+			&EPLFParser{},
+			&DOSParser{},
+			&UnixParser{},
+		}
+	}
+	parser := &CompositeParser{
+		Parsers: parsers,
+	}
+	return parser.Parse(line)
 }
 
 // parseUnixEntry parses a Unix-style directory entry.
@@ -229,9 +267,9 @@ func parseUnixEntry(entry *Entry, fields []string) bool {
 	// For links, extract the actual name and target (format: "name -> target")
 	if entry.Type == "link" {
 		// Use " -> " as separator (note the spaces)
-		if idx := strings.Index(fullName, " -> "); idx != -1 {
-			entry.Name = fullName[:idx]
-			entry.Target = fullName[idx+4:] // Skip " -> "
+		if before, after, ok := strings.Cut(fullName, " -> "); ok {
+			entry.Name = before
+			entry.Target = after // Skip " -> "
 		} else {
 			// Fallback: no arrow found, just use the full name
 			slog.Debug("Symlink detected but no arrow separator found",
@@ -278,7 +316,7 @@ func parseEPLFEntry(entry *Entry, line string) bool {
 	entry.Type = "file" // Default to file
 
 	// Parse facts (comma-separated)
-	for _, fact := range strings.Split(facts, ",") {
+	for fact := range strings.SplitSeq(facts, ",") {
 		if fact == "" {
 			continue
 		}

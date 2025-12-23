@@ -59,6 +59,10 @@
 // handles session reuse by maintaining a shared TLS session cache. No additional
 // configuration is required.
 //
+// When TLS is enabled, the library automatically enables data channel protection
+// (PROT P) for all data connections. This ensures that file transfers and
+// directory listings are encrypted.
+//
 // # File Transfers
 //
 // Upload a file:
@@ -109,5 +113,21 @@
 //	        fmt.Printf("Response: %s\n", pe.Response)
 //	        fmt.Printf("Code: %d\n", pe.Code)
 //	    }
+//	    }
 //	}
+//
+// # Custom Listing Parsers
+//
+// If you encounter a server with a non-standard LIST format, you can implement
+// the ListingParser interface and provide it to Dial:
+//
+//	type MyParser struct{}
+//	func (p *MyParser) Parse(line string) (*ftp.Entry, bool) {
+//	    // ... parsing logic ...
+//	    return entry, true
+//	}
+//
+//	client, err := ftp.Dial("ftp.example.com:21",
+//	    ftp.WithCustomListParser(&MyParser{}),
+//	)
 package ftp

@@ -24,6 +24,10 @@ func main() {
 	fmt.Println("(Requires write access to a server)")
 	// Uncomment to test file operations:
 	// fileOperationsExample()
+
+	fmt.Println("\n=== Example 4: Custom Listing Parser ===")
+	fmt.Println("(See the code)")
+	// customParserExample()
 }
 
 func plainFTPExample() {
@@ -150,4 +154,34 @@ func fileOperationsExample() {
 	} else {
 		fmt.Println("✓ File deleted")
 	}
+}
+
+func customParserExample() {
+	// Define a custom parser for a hypothetical format
+	// Format: "FILENAME|SIZE|TYPE"
+	myParser := &MyCustomParser{}
+
+	// Connect with the custom parser
+	// Note: We use a dummy address here just to show initialization
+	client, err := ftp.Dial("ftp.example.com:21",
+		ftp.WithCustomListParser(myParser),
+		ftp.WithTimeout(10*time.Second),
+	)
+	if err != nil {
+		fmt.Printf("Note: Dial failed as expected (dummy host): %v\n", err)
+		return
+	}
+	defer client.Quit()
+
+	// In a real scenario, List() would now use myParser
+	// entries, _ := client.List("/")
+}
+
+// MyCustomParser implements the ListingParser interface
+type MyCustomParser struct{}
+
+func (p *MyCustomParser) Parse(line string) (*ftp.Entry, bool) {
+	// Simple example parsing logic
+	// In reality, you would check if the line matches your custom format
+	return nil, false
 }

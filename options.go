@@ -121,3 +121,14 @@ func WithDisableEPSV() Option {
 		return nil
 	}
 }
+
+// WithCustomListParser adds a custom directory listing parser.
+// Custom parsers are tried before the built-in parsers (EPLF, DOS, Unix).
+// This allows handling non-standard LIST formats.
+func WithCustomListParser(parser ListingParser) Option {
+	return func(c *Client) error {
+		// Prepend the custom parser so it has priority
+		c.parsers = append([]ListingParser{parser}, c.parsers...)
+		return nil
+	}
+}

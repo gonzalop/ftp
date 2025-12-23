@@ -45,6 +45,9 @@ type Client struct {
 
 	// disableEPSV disables the use of EPSV command, forcing PASV default
 	disableEPSV bool
+
+	// parsers stores the list of directory listing parsers
+	parsers []ListingParser
 }
 
 // Dial connects to an FTP server at the given address.
@@ -53,6 +56,28 @@ type Client struct {
 // Example:
 //
 //	client, err := ftp.Dial("ftp.example.com:21")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	defer client.Quit()
+//
+// Example with Explicit TLS:
+//
+//	tlsConfig := &tls.Config{
+//	    ServerName: "ftp.example.com",
+//	}
+//	client, err := ftp.Dial("ftp.example.com:21", ftp.WithExplicitTLS(tlsConfig))
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	defer client.Quit()
+//
+// Example with Implicit TLS and self-signed certificate (InsecureSkipVerify):
+//
+//	tlsConfig := &tls.Config{
+//	    InsecureSkipVerify: true,
+//	}
+//	client, err := ftp.Dial("ftp.example.com:990", ftp.WithImplicitTLS(tlsConfig))
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
@@ -71,6 +96,11 @@ func Dial(addr string, options ...Option) (*Client, error) {
 		timeout: 30 * time.Second,
 		tlsMode: tlsModeNone,
 		dialer:  &net.Dialer{},
+		parsers: []ListingParser{
+			&EPLFParser{},
+			&DOSParser{},
+			&UnixParser{},
+		},
 	}
 
 	// Apply options

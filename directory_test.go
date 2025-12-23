@@ -207,7 +207,7 @@ func TestParseListLine(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			entry := parseListLine(tt.line)
+			entry := parseListLine(tt.line, nil)
 			if entry == nil {
 				t.Fatal("parseListLine returned nil")
 			}
@@ -228,5 +228,27 @@ func TestParseListLine(t *testing.T) {
 				t.Errorf("Target = %q, want %q", entry.Target, tt.expectedTarget)
 			}
 		})
+	}
+}
+
+// CustomParser for testing
+type CustomParser struct{}
+
+func (p *CustomParser) Parse(line string) (*Entry, bool) {
+	if line == "custom-entry" {
+		return &Entry{Name: "custom", Type: "file", Size: 999}, true
+	}
+	return nil, false
+}
+
+func TestCustomParser(t *testing.T) {
+	custom := &CustomParser{}
+	// Pass custom parser
+	entry := parseListLine("custom-entry", []ListingParser{custom})
+	if entry == nil {
+		t.Fatal("Custom parser failed to match")
+	}
+	if entry.Name != "custom" {
+		t.Errorf("Expected custom, got %s", entry.Name)
 	}
 }

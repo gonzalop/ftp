@@ -153,18 +153,18 @@ func (c *Client) MLList(path string) ([]*MLEntry, error) {
 // Facts format: "fact1=value1;fact2=value2;fact3=value3; "
 func parseMLEntry(line string) (*MLEntry, error) {
 	// Find the space that separates facts from the name
-	spaceIdx := strings.Index(line, " ")
-	if spaceIdx == -1 {
+	before, after, ok := strings.Cut(line, " ")
+	if !ok {
 		return nil, fmt.Errorf("invalid ML entry format: no space separator")
 	}
 
-	factsStr := line[:spaceIdx]
-	name := line[spaceIdx+1:]
+	factsStr := before
+	name := after
 
 	// Parse facts
 	facts := make(map[string]string)
-	factPairs := strings.Split(factsStr, ";")
-	for _, pair := range factPairs {
+	factPairs := strings.SplitSeq(factsStr, ";")
+	for pair := range factPairs {
 		pair = strings.TrimSpace(pair)
 		if pair == "" {
 			continue
