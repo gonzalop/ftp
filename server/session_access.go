@@ -16,6 +16,10 @@ func (s *session) handlePASS(pass string) error {
 			"user", s.user,
 			"reason", err.Error(),
 		)
+		// Metrics collection
+		if s.server.metricsCollector != nil {
+			s.server.metricsCollector.RecordAuthentication(false, s.user)
+		}
 		s.reply(530, "Login incorrect.")
 		return nil
 	}
@@ -27,6 +31,10 @@ func (s *session) handlePASS(pass string) error {
 		"remote_ip", s.remoteIP,
 		"user", s.user,
 	)
+	// Metrics collection
+	if s.server.metricsCollector != nil {
+		s.server.metricsCollector.RecordAuthentication(true, s.user)
+	}
 	s.reply(230, "User logged in, proceed.")
 	return nil
 }

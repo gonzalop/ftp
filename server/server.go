@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"maps"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -92,6 +93,13 @@ type Server struct {
 	connsByIP   map[string]int32
 	connsByIPMu sync.Mutex
 
+	// Privacy-aware logging
+	pathRedactor PathRedactor // Custom path redaction function (optional)
+	redactIPs    bool         // Redact last octet of IP addresses in logs
+
+	// Metrics collection (optional)
+	metricsCollector MetricsCollector
+
 	// Shutdown handling
 	mu         sync.Mutex
 	listener   net.Listener
@@ -164,6 +172,43 @@ func NewServer(addr string, options ...Option) (*Server, error) {
 	}
 
 	return s, nil
+}
+
+// redactPath applies custom path redaction if configured.
+func (s *Server) redactPath(path string) string {
+	if s.pathRedactor == nil {
+		return path
+	}
+	return s.pathRedactor(path)
+}
+
+// redactIP redacts the last octet of an IP address for privacy.
+// Example: "192.168.1.100" -> "192.168.1.xxx"
+// Example: "2001:db8::1" -> "2001:db8::xxx"
+func (s *Server) redactIP(ip string) string {
+	if !s.redactIPs || ip == "" {
+		return ip
+	}
+
+	// Handle IPv4
+	if strings.Contains(ip, ".") {
+		parts := strings.Split(ip, ".")
+		if len(parts) == 4 {
+			parts[3] = "xxx"
+			return strings.Join(parts, ".")
+		}
+	}
+
+	// Handle IPv6
+	if strings.Contains(ip, ":") {
+		// Simple approach: replace everything after last colon
+		lastColon := strings.LastIndex(ip, ":")
+		if lastColon > 0 {
+			return ip[:lastColon+1] + "xxx"
+		}
+	}
+
+	return ip
 }
 
 // ListenAndServe starts the FTP server on the configured address.
@@ -340,6 +385,10 @@ func (s *Server) handleSession(conn net.Conn) {
 			"reason", "global_limit_reached",
 			"limit", s.maxConnections,
 		)
+		// Metrics collection
+		if s.metricsCollector != nil {
+			s.metricsCollector.RecordConnection(false, "global_limit_reached")
+		}
 		// Send 421 service not available
 		fmt.Fprintf(conn, "421 Too many users, sorry.\r\n")
 		conn.Close()
@@ -366,6 +415,10 @@ func (s *Server) handleSession(conn net.Conn) {
 				"reason", "per_ip_limit_reached",
 				"limit", s.maxConnectionsPerIP,
 			)
+			// Metrics collection
+			if s.metricsCollector != nil {
+				s.metricsCollector.RecordConnection(false, "per_ip_limit_reached")
+			}
 			fmt.Fprintf(conn, "421 Too many connections from your IP address.\r\n")
 			conn.Close()
 			return
@@ -375,6 +428,11 @@ func (s *Server) handleSession(conn net.Conn) {
 
 	s.activeConns.Add(1)
 	defer s.activeConns.Add(-1)
+
+	// Metrics collection: connection accepted
+	if s.metricsCollector != nil {
+		s.metricsCollector.RecordConnection(true, "accepted")
+	}
 
 	session := newSession(s, conn)
 	session.serve()

@@ -70,15 +70,20 @@ func (s *session) handleRETR(path string) {
 	// Transfer logging
 	s.server.logger.Info("transfer_complete",
 		"session_id", s.sessionID,
-		"remote_ip", s.remoteIP,
+		"remote_ip", s.redactIP(s.remoteIP),
 		"user", s.user,
 		"host", s.host,
 		"operation", "RETR",
-		"path", path,
+		"path", s.redactPath(path),
 		"bytes", bytesTransferred,
 		"duration_ms", duration.Milliseconds(),
 		"throughput_mbps", fmt.Sprintf("%.2f", throughputMBps),
 	)
+
+	// Metrics collection
+	if s.server.metricsCollector != nil {
+		s.server.metricsCollector.RecordTransfer("RETR", bytesTransferred, duration)
+	}
 
 	s.reply(226, "Transfer complete.")
 }
@@ -143,15 +148,20 @@ func (s *session) handleSTOR(path string) {
 	// Transfer logging
 	s.server.logger.Info("transfer_complete",
 		"session_id", s.sessionID,
-		"remote_ip", s.remoteIP,
+		"remote_ip", s.redactIP(s.remoteIP),
 		"user", s.user,
 		"host", s.host,
 		"operation", "STOR",
-		"path", path,
+		"path", s.redactPath(path),
 		"bytes", bytesTransferred,
 		"duration_ms", duration.Milliseconds(),
 		"throughput_mbps", fmt.Sprintf("%.2f", throughputMBps),
 	)
+
+	// Metrics collection
+	if s.server.metricsCollector != nil {
+		s.server.metricsCollector.RecordTransfer("STOR", bytesTransferred, duration)
+	}
 
 	s.restartOffset = 0
 	s.reply(226, "Transfer complete.")

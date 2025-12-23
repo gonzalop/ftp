@@ -200,3 +200,61 @@ func WithWriteTimeout(duration time.Duration) Option {
 		return nil
 	}
 }
+
+// WithPathRedactor sets a custom path redaction function for privacy compliance.
+// The function will be called for every path logged, allowing custom redaction logic.
+//
+// Example - Redact middle components:
+//
+//	server.WithPathRedactor(func(path string) string {
+//	    parts := strings.Split(path, "/")
+//	    if len(parts) > 3 {
+//	        for i := 2; i < len(parts)-1; i++ {
+//	            parts[i] = "*"
+//	        }
+//	    }
+//	    return strings.Join(parts, "/")
+//	})
+//
+// Example - Redact specific patterns:
+//
+//	server.WithPathRedactor(func(path string) string {
+//	    return regexp.MustCompile(`/users/[^/]+/`).ReplaceAllString(path, "/users/*/")
+//	})
+func WithPathRedactor(redactor PathRedactor) Option {
+	return func(s *Server) error {
+		s.pathRedactor = redactor
+		return nil
+	}
+}
+
+// WithRedactIPs enables IP address redaction in logs for privacy compliance.
+// When enabled, the last octet of IPv4 addresses is replaced with "xxx".
+//
+// Example: "192.168.1.100" becomes "192.168.1.xxx"
+//
+// This helps comply with GDPR and other privacy regulations while maintaining
+// enough information for network troubleshooting.
+func WithRedactIPs(enabled bool) Option {
+	return func(s *Server) error {
+		s.redactIPs = enabled
+		return nil
+	}
+}
+
+// WithMetricsCollector sets an optional metrics collector for monitoring.
+// The collector will receive metrics about commands, transfers, connections,
+// and authentication attempts.
+//
+// Example:
+//
+//	s, _ := server.NewServer(":21",
+//	    server.WithDriver(driver),
+//	    server.WithMetricsCollector(myPrometheusCollector),
+//	)
+func WithMetricsCollector(collector MetricsCollector) Option {
+	return func(s *Server) error {
+		s.metricsCollector = collector
+		return nil
+	}
+}

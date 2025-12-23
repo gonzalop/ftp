@@ -72,6 +72,16 @@ func generateSessionID() string {
 	return fmt.Sprintf("%08x", b)
 }
 
+// redactPath returns the path with redaction applied if enabled.
+func (s *session) redactPath(path string) string {
+	return s.server.redactPath(path)
+}
+
+// redactIP returns the IP with redaction applied if enabled.
+func (s *session) redactIP(ip string) string {
+	return s.server.redactIP(ip)
+}
+
 // newSession creates a new session.
 func newSession(server *Server, conn net.Conn) *session {
 	// Generate unique session ID

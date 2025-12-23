@@ -222,6 +222,52 @@
 //	# Track file modifications by a specific user
 //	grep "user=john" server.log | grep -E "(file_uploaded|file_deleted|directory_)"
 //
+// # Privacy-Aware Logging
+//
+// Protect sensitive data in logs with custom redaction functions:
+//
+//	// Custom path redaction
+//	s, _ := server.NewServer(":21",
+//	    server.WithDriver(driver),
+//	    server.WithPathRedactor(func(path string) string {
+//	        parts := strings.Split(path, "/")
+//	        if len(parts) > 3 {
+//	            for i := 2; i < len(parts)-1; i++ {
+//	                parts[i] = "*"
+//	            }
+//	        }
+//	        return strings.Join(parts, "/")
+//	    }),
+//	    server.WithRedactIPs(true),  // Redact IP addresses
+//	)
+//
+// Result: "/home/user/documents/file.txt" → "/home/*/*/file.txt"
+// Result: "192.168.1.100" → "192.168.1.xxx"
+//
+// # Metrics and Monitoring
+//
+// Integrate with monitoring systems by implementing the MetricsCollector interface:
+//
+//	type MyMetrics struct {
+//	    // Your metrics implementation (Prometheus, StatsD, etc.)
+//	}
+//
+//	func (m *MyMetrics) RecordTransfer(operation string, bytes int64, duration time.Duration) {
+//	    // Send metrics to your monitoring system
+//	}
+//
+//	// ... implement other MetricsCollector methods
+//
+//	s, _ := server.NewServer(":21",
+//	    server.WithDriver(driver),
+//	    server.WithMetricsCollector(myMetrics),
+//	)
+//
+// The server will record metrics for:
+//   - File transfers (bytes, duration, operation type)
+//   - Authentication attempts (success/failure, username)
+//   - Connections (accepted/rejected, reason)
+//
 // # Troubleshooting
 //
 // Common issues and solutions:
