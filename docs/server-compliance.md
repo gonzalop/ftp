@@ -21,6 +21,7 @@ This server implements **comprehensive** FTP protocol support, focusing on moder
 - ✅ **SIZE** - File Size (RFC 3659)
 - ✅ **UTF8** - UTF-8 Support (RFC 2640)
 - ✅ **HOST** - Virtual Hosting (RFC 7151)
+- ✅ **HASH** - File Hashes
 
 ## Detailed Command Matrix
 
@@ -91,7 +92,7 @@ This server implements **comprehensive** FTP protocol support, focusing on moder
 | Command | FEAT Code | Description | Implementation | Notes |
 |---------|-----------|-------------|----------------|-------|
 | **FEAT** | feat | Feature Negotiation | ✅ Implemented | explicit list |
-| **OPTS** | feat | Options | ✅ Implemented | UTF8 |
+| **OPTS** | feat | Options | ✅ Implemented | UTF8, HASH |
 
 ---
 
@@ -113,6 +114,7 @@ This server implements **comprehensive** FTP protocol support, focusing on moder
 |---------|-----|-------------|----------------|-------|
 | **HOST** | RFC 7151 | Virtual Hosting | ✅ Implemented | |
 | **MFMT** | Draft | Modify Time | ✅ Implemented | |
+| **HASH** | Draft | File Hash | ✅ Implemented | SHA-1, SHA-256, SHA-512, MD5, CRC32 |
 
 
 ---
@@ -152,5 +154,6 @@ This server implements **comprehensive** FTP protocol support, focusing on moder
 - [RFC 5797](https://datatracker.ietf.org/doc/html/rfc5797) - FTP Command and Extension Registry
 - [RFC 7151](https://datatracker.ietf.org/doc/html/rfc7151) - FTP HOST Command for Virtual Hosts
 - [draft-somers-ftp-mfxx-04](https://datatracker.ietf.org/doc/html/draft-somers-ftp-mfxx-04) - FTP MFMT Command
+- [draft-bryan-ftp-hash](https://datatracker.ietf.org/doc/html/draft-bryan-ftpext-hash-02) - FTP HASH Command
 
 

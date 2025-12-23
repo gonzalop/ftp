@@ -180,6 +180,25 @@ info, _ := file.Stat()
 err = client.RetrieveFrom("large.bin", file, info.Size())
 ```
 
+### File Hashing
+
+```go
+// Set hash algorithm (optional, defaults to server preference)
+err := client.SetHashAlgo("SHA-256")
+
+// Get file hash
+hash, err := client.Hash("file.iso")
+fmt.Printf("SHA-256 Hash: %s\n", hash)
+```
+
+### Raw Commands (Quote)
+
+```go
+// Send a raw command to the server
+resp, err := client.Quote("SITE", "CHMOD", "755", "script.sh")
+fmt.Printf("Response: %s\n", resp.Message)
+```
+
 ## API Reference
 
 For complete API documentation, see [![Go Reference](https://pkg.go.dev/badge/github.com/gonzalop/ftp.svg)](https://pkg.go.dev/github.com/gonzalop/ftp)

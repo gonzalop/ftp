@@ -377,3 +377,59 @@ func (c *Client) Noop() error {
 	_, err := c.expect2xx("NOOP")
 	return err
 }
+
+// Quote sends a raw command to the server and returns the response.
+// This allows sending commands that are not explicitly supported by the client.
+//
+// Example:
+//
+//	resp, err := client.Quote("SITE", "CHMOD", "755", "script.sh")
+func (c *Client) Quote(command string, args ...string) (*Response, error) {
+	return c.sendCommand(command, args...)
+}
+
+// Hash requests the hash of a file from the server using the HASH command.
+// This implements draft-bryan-ftp-hash.
+//
+// The algorithm used is determined by the server's default or the last
+// algorithm selected via SetHashAlgo.
+//
+// Example:
+//
+//	hash, err := client.Hash("file.iso")
+func (c *Client) Hash(path string) (string, error) {
+	resp, err := c.sendCommand("HASH", path)
+	if err != nil {
+		return "", err
+	}
+
+	if resp.Code != 213 {
+		return "", &ProtocolError{
+			Command:  "HASH",
+			Response: resp.Message,
+			Code:     resp.Code,
+		}
+	}
+
+	// Parse response in format: "213 <algorithm> <hash value> <filename>"
+	// Some servers may return variations like "<algorithm> <hash value> <filename>"
+	parts := strings.Fields(resp.Message)
+	if len(parts) < 2 {
+		return "", fmt.Errorf("invalid HASH response: %s", resp.Message)
+	}
+
+	// The hash is expected to be the second field (parts[1]) if the format is "ALGO HASH PATH"
+	return parts[1], nil
+}
+
+// SetHashAlgo selects the hash algorithm to use for the HASH command.
+// Supported algorithms depend on the server (typically SHA-1, SHA-256, MD5, CRC32).
+// This uses the OPTS HASH command.
+//
+// Example:
+//
+//	err := client.SetHashAlgo("SHA-256")
+func (c *Client) SetHashAlgo(algo string) error {
+	_, err := c.expect2xx("OPTS", "HASH", algo)
+	return err
+}

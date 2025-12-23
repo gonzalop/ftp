@@ -116,7 +116,7 @@ func (s *session) handleHELP(arg string) {
 	fmt.Fprintf(s.writer, " SIZE MDTM FEAT OPTS\r\n")
 	fmt.Fprintf(s.writer, " AUTH PROT PBSZ\r\n")
 	fmt.Fprintf(s.writer, " SYST STAT HELP NOOP SITE\r\n")
-	fmt.Fprintf(s.writer, " HOST\r\n")
+	fmt.Fprintf(s.writer, " HOST HASH\r\n")
 	fmt.Fprintf(s.writer, "214 End of help\r\n")
 	s.writer.Flush()
 }

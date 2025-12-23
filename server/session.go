@@ -29,6 +29,7 @@ type session struct {
 	fs            ClientContext
 	restartOffset int64  // For REST command
 	host          string // From HOST command
+	selectedHash  string // Default SHA-256
 
 	// Data connection state
 	dataConn   net.Conn
@@ -62,11 +63,12 @@ func (s *session) validateActiveIP(ip net.IP) bool {
 // newSession creates a new session.
 func newSession(server *Server, conn net.Conn) *session {
 	s := &session{
-		server: server,
-		conn:   conn,
-		reader: bufio.NewReader(newTelnetReader(conn)),
-		writer: bufio.NewWriter(conn),
-		prot:   "C", // Default to clear
+		server:       server,
+		conn:         conn,
+		reader:       bufio.NewReader(newTelnetReader(conn)),
+		writer:       bufio.NewWriter(conn),
+		prot:         "C", // Default to clear
+		selectedHash: "SHA-256",
 	}
 
 	// Detect Implicit TLS (connection is already a *tls.Conn)
@@ -268,6 +270,8 @@ func (s *session) handleCommand(line string) {
 	// Extensions
 	case "HOST":
 		s.handleHOST(arg)
+	case "HASH":
+		s.handleHASH(arg)
 	case "MFMT":
 		s.handleMFMT(arg)
 

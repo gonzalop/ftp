@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -567,10 +568,38 @@ func (c *Client) ModTime(path string) (time.Time, error) {
 	}
 
 	// Parse using the FTP timestamp format
+	// RFC 3659 Section 2.3: "Time values are always represented in UTC"
 	modTime, parseErr := time.Parse("20060102150405", timestamp)
 	if parseErr != nil {
 		return time.Time{}, fmt.Errorf("failed to parse MDTM timestamp: %w", parseErr)
 	}
 
 	return modTime.UTC(), nil
+}
+
+// SetModTime sets the modification time of a file using the MFMT command.
+// The time is converted to UTC before being sent out.
+// This implements draft-somers-ftp-mfxx.
+//
+// Example:
+//
+//	err := client.SetModTime("file.txt", time.Now())
+func (c *Client) SetModTime(path string, t time.Time) error {
+	// RFC 3659 Section 2.3: "Time values are always represented in UTC"
+	timestamp := t.UTC().Format("20060102150405")
+	// MFMT time path
+	_, err := c.expect2xx("MFMT", timestamp, path)
+	return err
+}
+
+// Chmod changes the permissions of a file using the SITE CHMOD command.
+//
+// Example:
+//
+//	err := client.Chmod("script.sh", 0755)
+func (c *Client) Chmod(path string, mode os.FileMode) error {
+	// SITE CHMOD <octal> <path>
+	octalMode := fmt.Sprintf("%04o", mode&os.ModePerm)
+	_, err := c.expect2xx("SITE", "CHMOD", octalMode, path)
+	return err
 }

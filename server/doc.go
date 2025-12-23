@@ -211,5 +211,6 @@
 //   - RFC 4217 (Securing FTP with TLS)
 //   - RFC 7151 (HOST Command)
 //   - draft-somers-ftp-mfxx (MFMT Command)
+//   - draft-bryan-ftp-hash (HASH Command)
 
 package server

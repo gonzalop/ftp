@@ -86,6 +86,11 @@ type ClientContext interface {
 	// Returns os.ErrNotExist if the path doesn't exist.
 	GetFileInfo(path string) (os.FileInfo, error)
 
+	// GetHash calculates the hash of a file using the specified algorithm.
+	// Supported algorithms: "SHA-256", "SHA-512", "SHA-1", "MD5", "CRC32".
+	// Returns an error if the algorithm is unsupported or the file doesn't exist.
+	GetHash(path string, algo string) (string, error)
+
 	// SetTime sets the modification time of a file.
 	// Used by the MFMT command.
 	// Returns os.ErrNotExist if the file doesn't exist.

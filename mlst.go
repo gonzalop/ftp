@@ -202,6 +202,7 @@ func parseMLEntry(line string) (*MLEntry, error) {
 		// Remove fractional seconds if present
 		timestamp := strings.Split(modifyVal, ".")[0]
 		if len(timestamp) == 14 {
+			// RFC 3659 Section 2.3: "Time values are always represented in UTC"
 			if modTime, err := time.Parse("20060102150405", timestamp); err == nil {
 				entry.ModTime = modTime.UTC()
 			}

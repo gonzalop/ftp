@@ -1,8 +1,14 @@
 package server
 
 import (
+	"crypto/md5"
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"os"
 	"path/filepath"
@@ -399,6 +405,47 @@ func (c *fsContext) GetFileInfo(path string) (os.FileInfo, error) {
 		return nil, err
 	}
 	return c.rootHandle.Stat(rel)
+}
+
+// GetHash calculates the hash of the file using the specified algorithm.
+// Supported algorithms: SHA-256, SHA-512, SHA-1, MD5, CRC32
+func (c *fsContext) GetHash(path string, algo string) (string, error) {
+	rel, err := c.resolve(path)
+	if err != nil {
+		return "", err
+	}
+
+	f, err := c.rootHandle.Open(rel)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	var h interface {
+		io.Writer
+		Sum(b []byte) []byte
+	}
+
+	switch strings.ToUpper(algo) {
+	case "SHA-256", "SHA256":
+		h = sha256.New()
+	case "SHA-512", "SHA512":
+		h = sha512.New()
+	case "SHA-1", "SHA1":
+		h = sha1.New()
+	case "MD5":
+		h = md5.New()
+	case "CRC32":
+		h = crc32.NewIEEE()
+	default:
+		return "", errors.New("unsupported algorithm")
+	}
+
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // SetTime sets the modification time of a file.

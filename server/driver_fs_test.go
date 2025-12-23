@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -419,4 +420,67 @@ func TestFSContext_Chmod(t *testing.T) {
 	if err := ctx.Chmod("/test.txt", 04755); err == nil {
 		t.Error("Expected error for setuid bit (mode > 0777)")
 	}
+}
+
+// TestFSContext_GetHash tests hash calculation
+func TestFSContext_GetHash(t *testing.T) {
+	tempDir := t.TempDir()
+	testFile := filepath.Join(tempDir, "test.txt")
+	if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	driver, err := NewFSDriver(tempDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, err := driver.Authenticate("anonymous", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctx.Close()
+
+	tests := []struct {
+		algo        string
+		expectError bool
+	}{
+		{"SHA-256", false},
+		{"SHA-512", false},
+		{"SHA-1", false},
+		{"MD5", false},
+		{"CRC32", false},
+		{"INVALID", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.algo, func(t *testing.T) {
+			hash, err := ctx.GetHash("/test.txt", tt.algo)
+			if tt.expectError {
+				if err == nil {
+					t.Error("Expected error for invalid algorithm")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("GetHash failed: %v", err)
+				}
+				if hash == "" {
+					t.Error("Hash should not be empty")
+				}
+				// Verify it's a valid hex string
+				if !isHex(hash) {
+					t.Errorf("Hash is not valid hex: %s", hash)
+				}
+			}
+		})
+	}
+}
+
+func isHex(s string) bool {
+	for _, c := range s {
+		if !strings.ContainsRune("0123456789abcdefABCDEF", c) {
+			return false
+		}
+	}
+	return len(s) > 0
 }
