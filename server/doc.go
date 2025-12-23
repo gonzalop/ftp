@@ -210,5 +210,6 @@
 //   - RFC 3659 (Extensions: SIZE, MDTM, MLSD, MLST, REST)
 //   - RFC 4217 (Securing FTP with TLS)
 //   - RFC 7151 (HOST Command)
-//   - draft-bryan-ftp-hash (HASH Command)
+//   - draft-somers-ftp-mfxx (MFMT Command)
+
 package server

@@ -52,7 +52,7 @@ func (s *session) handleFEAT() {
 		"MLST type*;size*;modify*;",
 		"REST STREAM",
 		"HOST",
-		"HASH SHA-1;SHA-256;SHA-512;MD5;CRC32",
+		"MFMT",
 	}
 
 	if s.server.tlsConfig != nil {
@@ -75,19 +75,6 @@ func (s *session) handleOPTS(arg string) {
 	if strings.HasPrefix(strings.ToUpper(arg), "UTF8 ON") {
 		s.reply(200, "Always in UTF8 mode.")
 		return
-	}
-	// OPTS HASH [ALGO]
-	if strings.HasPrefix(strings.ToUpper(arg), "HASH") {
-		parts := strings.Split(arg, " ")
-		if len(parts) > 1 {
-			algo := strings.ToUpper(parts[1])
-			switch algo {
-			case "SHA-1", "SHA-256", "SHA-512", "MD5", "CRC32":
-				s.selectedHash = algo
-				s.reply(200, algo+" selected.")
-				return
-			}
-		}
 	}
 	s.reply(501, "Option not understood.")
 }

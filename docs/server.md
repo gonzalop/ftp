@@ -18,7 +18,7 @@ A flexible and modular FTP server implementation in Go. Embed an FTP server into
 - **RFC Compliance**: Implements key FTP RFCs for broad client compatibility
 - **TLS Support**: Both Explicit (AUTH TLS) and Implicit FTPS modes
 - **IPv6 Support**: Fully supports IPv6 via RFC 2428 (EPRT/EPSV)
-- **Modern Extensions**: Supports `SIZE`, `MDTM`, `MLST/MLSD`, `HASH`, and more
+- **Modern Extensions**: Supports `SIZE`, `MDTM`, `MFMT`, `MLST/MLSD`, `SITE CHMOD` and more
 
 ## RFC Compliance
 
@@ -32,7 +32,8 @@ This server implements the following RFCs:
 - **RFC 3659** (Extensions to FTP): `SIZE`, `MDTM`, `MLSD`, `MLST`, `REST`.
 - **RFC 4217** (Securing FTP with TLS): `AUTH`, `PROT`, `PBSZ`.
 - **RFC 7151** (HOST Command): `HOST` (Virtual Hosting).
-- **draft-bryan-ftp-hash** (HASH Command): `HASH` (Integrity Check -  SHA-1, SHA-256, SHA-512, MD5, CRC32).
+- **draft-somers-ftp-mfxx** (MFMT Command): `MFMT` (Modify Fact: Modification Time).
+
 
 📋 **[Detailed Compliance Matrix](server-compliance.md)** - Detailed tables of all FTP commands and their implementation status
 

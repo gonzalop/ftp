@@ -2,7 +2,9 @@ package server
 
 import (
 	"fmt"
+	"os"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -114,7 +116,7 @@ func (s *session) handleHELP(arg string) {
 	fmt.Fprintf(s.writer, " SIZE MDTM FEAT OPTS\r\n")
 	fmt.Fprintf(s.writer, " AUTH PROT PBSZ\r\n")
 	fmt.Fprintf(s.writer, " SYST STAT HELP NOOP SITE\r\n")
-	fmt.Fprintf(s.writer, " HOST HASH\r\n")
+	fmt.Fprintf(s.writer, " HOST\r\n")
 	fmt.Fprintf(s.writer, "214 End of help\r\n")
 	s.writer.Flush()
 }
@@ -132,7 +134,35 @@ func (s *session) handleSITE(arg string) {
 
 	switch cmd {
 	case "HELP":
-		s.reply(214, "Available SITE commands: HELP")
+		s.reply(214, "Available SITE commands: HELP, CHMOD")
+	case "CHMOD":
+		// Syntax: SITE CHMOD <mode> <file>
+		if len(parts) < 3 {
+			s.reply(501, "Syntax error in parameters or arguments.")
+			return
+		}
+		modeStr := parts[1]
+		path := strings.Join(parts[2:], " ") // path might contain spaces
+
+		// Parse octal mode
+		mode, err := strconv.ParseUint(modeStr, 8, 32)
+		if err != nil {
+			s.reply(501, "Invalid mode.")
+			return
+		}
+
+		// Validate mode: only allow standard permission bits (0-777)
+		if mode > 0777 {
+			s.reply(501, "Invalid mode: special bits not allowed.")
+			return
+		}
+
+		if err := s.fs.Chmod(path, os.FileMode(mode)); err != nil {
+			s.replyError(err)
+			return
+		}
+		s.reply(200, "SITE CHMOD command successful.")
+
 	default:
 		s.reply(502, "SITE command not implemented.")
 	}

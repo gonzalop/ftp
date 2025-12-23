@@ -1,18 +1,13 @@
 package server
 
 import (
-	"crypto/md5"
-	"crypto/sha1"
-	"crypto/sha256"
-	"crypto/sha512"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"hash/crc32"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // FSDriver implements Driver using the local filesystem.
@@ -212,6 +207,7 @@ func (d *FSDriver) Authenticate(user, pass, host string) (ClientContext, error) 
 
 	return &fsContext{
 		rootHandle: root,
+		rootPath:   rootPath,
 		cwd:        "/",
 		readOnly:   readOnly,
 		settings:   d.settings,
@@ -223,6 +219,7 @@ func (d *FSDriver) Authenticate(user, pass, host string) (ClientContext, error) 
 // are jailed within the root handle.
 type fsContext struct {
 	rootHandle *os.Root
+	rootPath   string
 	cwd        string
 	readOnly   bool
 	settings   *Settings
@@ -404,45 +401,40 @@ func (c *fsContext) GetFileInfo(path string) (os.FileInfo, error) {
 	return c.rootHandle.Stat(rel)
 }
 
-// GetHash calculates the hash of the file using the specified algorithm.
-// Supported algorithms: SHA-256, SHA-512, SHA-1, MD5, CRC32
-func (c *fsContext) GetHash(path string, algo string) (string, error) {
+// SetTime sets the modification time of a file.
+// Used by the MFMT command.
+func (c *fsContext) SetTime(path string, t time.Time) error {
+	if c.readOnly {
+		return os.ErrPermission
+	}
 	rel, err := c.resolve(path)
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	f, err := c.rootHandle.Open(rel)
+	fullPath := filepath.Join(c.rootPath, rel)
+	return os.Chtimes(fullPath, t, t)
+}
+
+// Chmod changes the mode of the file.
+// Used by the SITE CHMOD command.
+func (c *fsContext) Chmod(path string, mode os.FileMode) error {
+	if c.readOnly {
+		return os.ErrPermission
+	}
+
+	// Validate mode: only allow standard permission bits (0-777)
+	if mode > 0777 {
+		return os.ErrInvalid
+	}
+
+	rel, err := c.resolve(path)
 	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-
-	var h interface {
-		io.Writer
-		Sum(b []byte) []byte
+		return err
 	}
 
-	switch strings.ToUpper(algo) {
-	case "SHA-256", "SHA256":
-		h = sha256.New()
-	case "SHA-512", "SHA512":
-		h = sha512.New()
-	case "SHA-1", "SHA1":
-		h = sha1.New()
-	case "MD5":
-		h = md5.New()
-	case "CRC32":
-		h = crc32.NewIEEE()
-	default:
-		return "", errors.New("unsupported algorithm")
-	}
-
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-
-	return hex.EncodeToString(h.Sum(nil)), nil
+	fullPath := filepath.Join(c.rootPath, rel)
+	return os.Chmod(fullPath, mode)
 }
 
 func (c *fsContext) GetSettings() *Settings {

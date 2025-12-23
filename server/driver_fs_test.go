@@ -3,8 +3,9 @@ package server
 import (
 	"os"
 	"path/filepath"
-	"strings"
+	"runtime"
 	"testing"
+	"time"
 )
 
 func TestFSDriver_DisableAnonymous(t *testing.T) {
@@ -322,65 +323,100 @@ func TestFSContext_ReadOnly(t *testing.T) {
 	}
 }
 
-// TestFSContext_GetHash tests hash calculation
-func TestFSContext_GetHash(t *testing.T) {
+// TestFSContext_SetTime tests modification time setting
+func TestFSContext_SetTime(t *testing.T) {
 	tempDir := t.TempDir()
 	testFile := filepath.Join(tempDir, "test.txt")
 	if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	driver, err := NewFSDriver(tempDir)
+	driver, err := NewFSDriver(tempDir,
+		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+			return tempDir, false, nil // read-write
+		}),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	ctx, err := driver.Authenticate("anonymous", "", "")
+	ctx, err := driver.Authenticate("user", "pass", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer ctx.Close()
 
-	tests := []struct {
-		algo        string
-		expectError bool
-	}{
-		{"SHA-256", false},
-		{"SHA-512", false},
-		{"SHA-1", false},
-		{"MD5", false},
-		{"CRC32", false},
-		{"INVALID", true},
+	// Valid time
+	newTime := time.Date(2022, 1, 1, 12, 0, 0, 0, time.UTC)
+	if err := ctx.SetTime("/test.txt", newTime); err != nil {
+		t.Errorf("SetTime failed: %v", err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.algo, func(t *testing.T) {
-			hash, err := ctx.GetHash("/test.txt", tt.algo)
-			if tt.expectError {
-				if err == nil {
-					t.Error("Expected error for invalid algorithm")
-				}
-			} else {
-				if err != nil {
-					t.Errorf("GetHash failed: %v", err)
-				}
-				if hash == "" {
-					t.Error("Hash should not be empty")
-				}
-				// Verify it's a valid hex string
-				if !isHex(hash) {
-					t.Errorf("Hash is not valid hex: %s", hash)
-				}
-			}
-		})
+	// Verify
+	info, err := os.Stat(testFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.ModTime().Equal(newTime) {
+		t.Errorf("Time mismatch: got %v, want %v", info.ModTime(), newTime)
+	}
+
+	// Invalid path
+	if err := ctx.SetTime("/nonexistent", newTime); err == nil {
+		t.Error("Expected error for non-existent file")
 	}
 }
 
-func isHex(s string) bool {
-	for _, c := range s {
-		if !strings.ContainsRune("0123456789abcdefABCDEF", c) {
-			return false
-		}
+// TestFSContext_Chmod tests mode changing
+func TestFSContext_Chmod(t *testing.T) {
+	tempDir := t.TempDir()
+	if runtime.GOOS == "windows" {
+		t.Skip("Chmod not fully supported on Windows")
 	}
-	return len(s) > 0
+
+	testFile := filepath.Join(tempDir, "test.txt")
+	if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	driver, err := NewFSDriver(tempDir,
+		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+			return tempDir, false, nil // read-write
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, err := driver.Authenticate("user", "pass", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctx.Close()
+
+	// Change to 0600
+	if err := ctx.Chmod("/test.txt", 0600); err != nil {
+		t.Errorf("Chmod failed: %v", err)
+	}
+
+	// Verify
+	info, err := os.Stat(testFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Note: os.Stat might return more permission bits than we set, so mask.
+	if info.Mode().Perm() != 0600 {
+		t.Errorf("Mode mismatch: got %o, want %o", info.Mode().Perm(), 0600)
+	}
+
+	// Invalid path
+	if err := ctx.Chmod("/nonexistent", 0600); err == nil {
+		t.Error("Expected error for non-existent file")
+	}
+
+	// Test that modes > 0777 are rejected at the driver level
+	// (Note: session layer also validates, but driver should be safe)
+	if err := ctx.Chmod("/test.txt", 04755); err == nil {
+		t.Error("Expected error for setuid bit (mode > 0777)")
+	}
 }

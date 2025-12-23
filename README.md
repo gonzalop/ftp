@@ -92,7 +92,7 @@ func main() {
 - **TLS/FTPS** - Both explicit (AUTH TLS) and implicit modes
 - **Progress Tracking** - Built-in callbacks for upload/download progress
 - **Resume Transfers** - Resume interrupted downloads/uploads (REST)
-- **Modern Extensions** - MLST/MLSD, SIZE, MDTM, HASH support
+- **Modern Extensions** - MLST/MLSD, SIZE, MDTM support
 - **IPv6 Support** - Full IPv6 via EPSV/EPRT (RFC 2428)
 - **Rich Errors** - Detailed protocol error context
 
@@ -103,7 +103,7 @@ func main() {
 - **Pluggable Backends** - Filesystem, S3, memory, or custom storage
 - **TLS/FTPS** - Explicit and implicit FTPS support
 - **Virtual Hosting** - HOST command for multi-tenant setups (RFC 7151)
-- **File Hashing** - HASH command with SHA-256, SHA-512, MD5, CRC32
+
 - **Secure by Default** - Built-in path validation and chroot support
 - **Extensible** - Custom authentication and driver interfaces
 

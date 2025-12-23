@@ -13,6 +13,7 @@ This server implements **comprehensive** FTP protocol support, focusing on moder
 - ✅ **nat6** - FTP Extensions for NAT/IPv6 (RFC 2428)
 - ✅ **feat** - FTP Feature Negotiation (RFC 2389)
 - ✅ **MDTM** - File Modification Time (RFC 3659)
+- ✅ **MFMT** - Modify Fact: Modification Time (draft-somers-ftp-mfxx)
 - ✅ **MLST** - Machine-Readable Listings (RFC 3659)
 - ✅ **PBSZ** - Protection Buffer Size
 - ✅ **PROT** - Data Channel Protection Level
@@ -20,7 +21,6 @@ This server implements **comprehensive** FTP protocol support, focusing on moder
 - ✅ **SIZE** - File Size (RFC 3659)
 - ✅ **UTF8** - UTF-8 Support (RFC 2640)
 - ✅ **HOST** - Virtual Hosting (RFC 7151)
-- ✅ **HASH** - File Hashes
 
 ## Detailed Command Matrix
 
@@ -54,7 +54,7 @@ This server implements **comprehensive** FTP protocol support, focusing on moder
 | **MODE** | Transfer Mode | ✅ Implemented (RFC 1123) |
 | REIN | Reinitialize | ❌ Reconnect instead |
 | RMD | Remove Directory | ✅ Implemented |
-| **SITE** | Site Parameters | ✅ Implemented |
+| **SITE** | Site Parameters | ✅ Implemented | HELP, CHMOD |
 | SMNT | Structure Mount | ❌ Rarely used |
 | **STAT** | Status | ✅ Implemented (RFC 1123) |
 | STOU | Store Unique | ✅ Implemented |
@@ -91,7 +91,7 @@ This server implements **comprehensive** FTP protocol support, focusing on moder
 | Command | FEAT Code | Description | Implementation | Notes |
 |---------|-----------|-------------|----------------|-------|
 | **FEAT** | feat | Feature Negotiation | ✅ Implemented | explicit list |
-| **OPTS** | feat | Options | ✅ Implemented | UTF8, HASH |
+| **OPTS** | feat | Options | ✅ Implemented | UTF8 |
 
 ---
 
@@ -112,7 +112,8 @@ This server implements **comprehensive** FTP protocol support, focusing on moder
 | Command | RFC | Description | Implementation | Notes |
 |---------|-----|-------------|----------------|-------|
 | **HOST** | RFC 7151 | Virtual Hosting | ✅ Implemented | |
-| **HASH** | Draft | File Hash | ✅ Implemented | SHA-1, SHA-256, SHA-512, MD5, CRC32 |
+| **MFMT** | Draft | Modify Time | ✅ Implemented | |
+
 
 ---
 
@@ -150,5 +151,6 @@ This server implements **comprehensive** FTP protocol support, focusing on moder
 - [RFC 4217](https://datatracker.ietf.org/doc/html/rfc4217) - Securing FTP with TLS
 - [RFC 5797](https://datatracker.ietf.org/doc/html/rfc5797) - FTP Command and Extension Registry
 - [RFC 7151](https://datatracker.ietf.org/doc/html/rfc7151) - FTP HOST Command for Virtual Hosts
-- [draft-bryan-ftp-hash](https://datatracker.ietf.org/doc/html/draft-bryan-ftpext-hash-02) - FTP HASH Command
+- [draft-somers-ftp-mfxx-04](https://datatracker.ietf.org/doc/html/draft-somers-ftp-mfxx-04) - FTP MFMT Command
+
 
