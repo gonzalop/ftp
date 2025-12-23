@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -226,12 +227,25 @@ func (s *Server) ListenAndServe() error {
 	return s.Serve(ln)
 }
 
-// Shutdown stops the server.
+// Shutdown gracefully stops the server.
 //
-// It closes the listener and immediately closes all active connections.
-func (s *Server) Shutdown() error {
+// It immediately stops accepting new connections by closing the listener,
+// then waits for active connections to finish or until the context is cancelled.
+//
+// If the context expires before all connections close, remaining connections
+// are forcibly closed.
+//
+// Example with timeout:
+//
+//	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+//	defer cancel()
+//	if err := s.Shutdown(ctx); err != nil {
+//	    log.Printf("Shutdown error: %v", err)
+//	}
+func (s *Server) Shutdown(ctx context.Context) error {
 	s.inShutdown.Store(true)
 
+	// Close the listener to stop accepting new connections
 	s.mu.Lock()
 	ln := s.listener
 	s.listener = nil
@@ -242,17 +256,38 @@ func (s *Server) Shutdown() error {
 		err = ln.Close()
 	}
 
-	// Close all active connections (control and data)
-	s.mu.Lock()
-	conns := s.conns
-	s.conns = make(map[net.Conn]struct{})
-	s.mu.Unlock()
+	// Wait for active connections to finish or context to expire
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			if s.activeConns.Load() == 0 {
+				return
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}()
 
-	for conn := range maps.Keys(conns) {
-		conn.Close()
+	select {
+	case <-done:
+		// All connections finished gracefully
+		return err
+	case <-ctx.Done():
+		// Context expired, force close remaining connections
+		s.mu.Lock()
+		conns := s.conns
+		s.conns = make(map[net.Conn]struct{})
+		s.mu.Unlock()
+
+		for conn := range maps.Keys(conns) {
+			conn.Close()
+		}
+
+		if err != nil {
+			return err
+		}
+		return ctx.Err()
 	}
-
-	return err
 }
 
 // Serve accepts incoming connections on the listener l.

@@ -2,6 +2,7 @@ package ftp_test
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -17,7 +18,7 @@ func TestRecursiveHelpers(t *testing.T) {
 	// Start server
 	addr, s, rootDir := startServer(t)
 	defer func() {
-		if err := s.Shutdown(); err != nil {
+		if err := s.Shutdown(context.Background()); err != nil {
 			t.Logf("Shutdown error: %v", err)
 		}
 	}()

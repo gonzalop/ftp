@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"io"
 	"net"
 	"os"
@@ -59,7 +60,9 @@ func TestServer_Shutdown(t *testing.T) {
 	}
 
 	// 4. Shutdown Server
-	if err := server.Shutdown(); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := server.Shutdown(ctx); err != nil && err != context.DeadlineExceeded {
 		t.Fatalf("Shutdown failed: %v", err)
 	}
 
@@ -183,8 +186,10 @@ func TestServer_Shutdown_DataConn(t *testing.T) {
 
 	// 4. Shutdown
 	start := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+	defer cancel()
 	// Shutdown should return quickly, and kill the data conn
-	if err := server.Shutdown(); err != nil {
+	if err := server.Shutdown(ctx); err != nil && err != context.DeadlineExceeded {
 		t.Fatalf("Shutdown failed: %v", err)
 	}
 

@@ -222,6 +222,38 @@
 //	# Track file modifications by a specific user
 //	grep "user=john" server.log | grep -E "(file_uploaded|file_deleted|directory_)"
 //
+// # Graceful Shutdown
+//
+// The server supports graceful shutdown with configurable timeout:
+//
+//	// Create server
+//	s, _ := server.NewServer(":21", server.WithDriver(driver))
+//
+//	// Start server in goroutine
+//	go func() {
+//	    if err := s.ListenAndServe(); err != nil && err != server.ErrServerClosed {
+//	        log.Printf("Server error: %v", err)
+//	    }
+//	}()
+//
+//	// Graceful shutdown with 30 second timeout
+//	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+//	defer cancel()
+//	if err := s.Shutdown(ctx); err != nil {
+//	    log.Printf("Shutdown error: %v", err)
+//	}
+//
+// Shutdown behavior:
+//   - Immediately stops accepting new connections
+//   - Waits for active connections to finish (up to context timeout)
+//   - Forcibly closes remaining connections when context expires
+//
+// For immediate shutdown, use a very short timeout:
+//
+//	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+//	defer cancel()
+//	s.Shutdown(ctx)
+//
 // # Privacy-Aware Logging
 //
 // Protect sensitive data in logs with custom redaction functions:
