@@ -83,10 +83,25 @@ func newSession(server *Server, conn net.Conn) *session {
 func (s *session) serve() {
 	defer s.close()
 
-	s.reply(220, "Service ready for new user.")
+	// Send welcome message
+	if strings.HasPrefix(s.server.welcomeMessage, "220 ") {
+		// Message already has code, send raw
+		fmt.Fprintf(s.writer, "%s\r\n", s.server.welcomeMessage)
+		s.writer.Flush()
+	} else if strings.HasPrefix(s.server.welcomeMessage, "220") {
+		// Has code but no space, add it
+		fmt.Fprintf(s.writer, "220 %s\r\n", s.server.welcomeMessage[3:])
+		s.writer.Flush()
+	} else {
+		// No code, use reply
+		s.reply(220, s.server.welcomeMessage)
+	}
 
 	for {
-		if s.server.maxIdleTime > 0 {
+		// Apply read timeout (for command reading)
+		if s.server.readTimeout > 0 {
+			_ = s.conn.SetReadDeadline(time.Now().Add(s.server.readTimeout))
+		} else if s.server.maxIdleTime > 0 {
 			_ = s.conn.SetReadDeadline(time.Now().Add(s.server.maxIdleTime))
 		}
 
@@ -101,10 +116,20 @@ func (s *session) serve() {
 			return
 		}
 
-		// Clear deadline
+		// Clear read deadline
 		_ = s.conn.SetReadDeadline(time.Time{})
 
+		// Apply write timeout (for response writing)
+		if s.server.writeTimeout > 0 {
+			_ = s.conn.SetWriteDeadline(time.Now().Add(s.server.writeTimeout))
+		}
+
 		s.handleCommand(line)
+
+		// Clear write deadline
+		if s.server.writeTimeout > 0 {
+			_ = s.conn.SetWriteDeadline(time.Time{})
+		}
 	}
 }
 
@@ -305,6 +330,14 @@ func (s *session) connData() (net.Conn, error) {
 			conn = tlsConn
 		}
 
+		// Apply timeouts to data connection
+		if s.server.readTimeout > 0 {
+			_ = conn.SetReadDeadline(time.Now().Add(s.server.readTimeout))
+		}
+		if s.server.writeTimeout > 0 {
+			_ = conn.SetWriteDeadline(time.Now().Add(s.server.writeTimeout))
+		}
+
 		// Track data connection
 		s.server.trackConnection(conn, true)
 		return &trackingConn{Conn: conn, server: s.server}, nil
@@ -332,6 +365,14 @@ func (s *session) connData() (net.Conn, error) {
 				return nil, err
 			}
 			conn = tlsConn
+		}
+
+		// Apply timeouts to data connection
+		if s.server.readTimeout > 0 {
+			_ = conn.SetReadDeadline(time.Now().Add(s.server.readTimeout))
+		}
+		if s.server.writeTimeout > 0 {
+			_ = conn.SetWriteDeadline(time.Now().Add(s.server.writeTimeout))
 		}
 
 		// Track data connection

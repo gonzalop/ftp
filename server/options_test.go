@@ -193,4 +193,96 @@ func TestNewServer_Defaults(t *testing.T) {
 	if s.disableMLSD {
 		t.Error("MLSD should be enabled by default")
 	}
+	if s.welcomeMessage != "220 FTP Server Ready" {
+		t.Errorf("Expected default welcome message '220 FTP Server Ready', got %q", s.welcomeMessage)
+	}
+	if s.serverName != "UNIX Type: L8" {
+		t.Errorf("Expected default server name 'UNIX Type: L8', got %q", s.serverName)
+	}
+	if s.readTimeout != 0 {
+		t.Errorf("Expected default read timeout 0, got %v", s.readTimeout)
+	}
+	if s.writeTimeout != 0 {
+		t.Errorf("Expected default write timeout 0, got %v", s.writeTimeout)
+	}
+}
+
+// TestWithWelcomeMessage tests the WithWelcomeMessage option
+func TestWithWelcomeMessage(t *testing.T) {
+	tempDir := t.TempDir()
+	driver, _ := NewFSDriver(tempDir)
+
+	customMessage := "220 Welcome to My FTP Server"
+
+	s, err := NewServer(":0",
+		WithDriver(driver),
+		WithWelcomeMessage(customMessage),
+	)
+	if err != nil {
+		t.Fatalf("NewServer failed: %v", err)
+	}
+
+	if s.welcomeMessage != customMessage {
+		t.Errorf("Expected welcome message %q, got %q", customMessage, s.welcomeMessage)
+	}
+}
+
+// TestWithServerName tests the WithServerName option
+func TestWithServerName(t *testing.T) {
+	tempDir := t.TempDir()
+	driver, _ := NewFSDriver(tempDir)
+
+	customName := "Windows_NT"
+
+	s, err := NewServer(":0",
+		WithDriver(driver),
+		WithServerName(customName),
+	)
+	if err != nil {
+		t.Fatalf("NewServer failed: %v", err)
+	}
+
+	if s.serverName != customName {
+		t.Errorf("Expected server name %q, got %q", customName, s.serverName)
+	}
+}
+
+// TestWithReadTimeout tests the WithReadTimeout option
+func TestWithReadTimeout(t *testing.T) {
+	tempDir := t.TempDir()
+	driver, _ := NewFSDriver(tempDir)
+
+	customTimeout := 30 * time.Second
+
+	s, err := NewServer(":0",
+		WithDriver(driver),
+		WithReadTimeout(customTimeout),
+	)
+	if err != nil {
+		t.Fatalf("NewServer failed: %v", err)
+	}
+
+	if s.readTimeout != customTimeout {
+		t.Errorf("Expected read timeout %v, got %v", customTimeout, s.readTimeout)
+	}
+}
+
+// TestWithWriteTimeout tests the WithWriteTimeout option
+func TestWithWriteTimeout(t *testing.T) {
+	tempDir := t.TempDir()
+	driver, _ := NewFSDriver(tempDir)
+
+	customTimeout := 30 * time.Second
+
+	s, err := NewServer(":0",
+		WithDriver(driver),
+		WithWriteTimeout(customTimeout),
+	)
+	if err != nil {
+		t.Fatalf("NewServer failed: %v", err)
+	}
+
+	if s.writeTimeout != customTimeout {
+		t.Errorf("Expected write timeout %v, got %v", customTimeout, s.writeTimeout)
+	}
 }

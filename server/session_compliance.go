@@ -3,7 +3,6 @@ package server
 import (
 	"fmt"
 	"os"
-	"runtime"
 	"strconv"
 	"strings"
 )
@@ -49,20 +48,9 @@ func (s *session) handleSTRU(arg string) {
 }
 
 // handleSYST handles the SYST command.
-// Returns the system type, dynamically detected based on runtime.GOOS.
+// Returns the system type from server configuration.
 func (s *session) handleSYST() {
-	var systType string
-	switch runtime.GOOS {
-	case "linux", "darwin", "freebsd", "openbsd", "netbsd", "dragonfly", "solaris", "illumos", "aix":
-		systType = "UNIX Type: L8"
-	case "windows":
-		systType = "Windows_NT"
-	case "plan9":
-		systType = "Plan9"
-	default:
-		systType = "UNKNOWN Type: L8"
-	}
-	s.reply(215, systType)
+	s.reply(215, s.server.serverName)
 }
 
 // handleSTAT handles the STAT command.

@@ -57,9 +57,25 @@ type Server struct {
 	// disableMLSD disables the MLSD command (for compatibility testing).
 	disableMLSD bool
 
+	// welcomeMessage is the banner sent to clients on connection.
+	// Defaults to "220 FTP Server Ready".
+	welcomeMessage string
+
+	// serverName is the system type returned by the SYST command.
+	// Defaults to "UNIX Type: L8".
+	serverName string
+
 	// maxIdleTime is the maximum time a connection can be idle before being closed.
 	// Defaults to 5 minutes.
 	maxIdleTime time.Duration
+
+	// readTimeout is the deadline for read operations on connections.
+	// If 0, no timeout is applied.
+	readTimeout time.Duration
+
+	// writeTimeout is the deadline for write operations on connections.
+	// If 0, no timeout is applied.
+	writeTimeout time.Duration
 
 	// maxConnections is the maximum number of simultaneous connections.
 	// If 0, there is no limit.
@@ -126,11 +142,13 @@ var ErrServerClosed = errors.New("ftp: Server closed")
 //	)
 func NewServer(addr string, options ...Option) (*Server, error) {
 	s := &Server{
-		addr:        addr,
-		logger:      slog.Default(),
-		maxIdleTime: 5 * time.Minute,
-		conns:       make(map[net.Conn]struct{}),
-		connsByIP:   make(map[string]int32),
+		addr:           addr,
+		logger:         slog.Default(),
+		welcomeMessage: "220 FTP Server Ready",
+		serverName:     "UNIX Type: L8",
+		maxIdleTime:    5 * time.Minute,
+		conns:          make(map[net.Conn]struct{}),
+		connsByIP:      make(map[string]int32),
 	}
 
 	// Apply options

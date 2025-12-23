@@ -122,3 +122,81 @@ func WithDisableMLSD(disable bool) Option {
 		return nil
 	}
 }
+
+// WithWelcomeMessage sets a custom welcome banner sent to clients on connection.
+// If not specified, defaults to "220 FTP Server Ready".
+//
+// The message should be a complete FTP response. If it doesn't start with "220",
+// it will be prepended automatically.
+//
+// Example:
+//
+//	s, _ := server.NewServer(":21",
+//	    server.WithDriver(driver),
+//	    server.WithWelcomeMessage("220 Welcome to My FTP Server"),
+//	)
+func WithWelcomeMessage(message string) Option {
+	return func(s *Server) error {
+		s.welcomeMessage = message
+		return nil
+	}
+}
+
+// WithServerName sets the system type returned by the SYST command.
+// If not specified, defaults to "UNIX Type: L8".
+//
+// Common values:
+//   - "UNIX Type: L8" (default)
+//   - "Windows_NT"
+//   - "MACOS"
+//
+// Example:
+//
+//	s, _ := server.NewServer(":21",
+//	    server.WithDriver(driver),
+//	    server.WithServerName("Windows_NT"),
+//	)
+func WithServerName(name string) Option {
+	return func(s *Server) error {
+		s.serverName = name
+		return nil
+	}
+}
+
+// WithReadTimeout sets the deadline for read operations on connections.
+// If 0 (default), no timeout is applied.
+//
+// This prevents slow-read attacks and helps detect network issues.
+// The timeout is reset after each successful read operation.
+//
+// Example:
+//
+//	s, _ := server.NewServer(":21",
+//	    server.WithDriver(driver),
+//	    server.WithReadTimeout(30*time.Second),
+//	)
+func WithReadTimeout(duration time.Duration) Option {
+	return func(s *Server) error {
+		s.readTimeout = duration
+		return nil
+	}
+}
+
+// WithWriteTimeout sets the deadline for write operations on connections.
+// If 0 (default), no timeout is applied.
+//
+// This prevents hanging on slow clients and helps detect network issues.
+// The timeout is reset after each successful write operation.
+//
+// Example:
+//
+//	s, _ := server.NewServer(":21",
+//	    server.WithDriver(driver),
+//	    server.WithWriteTimeout(30*time.Second),
+//	)
+func WithWriteTimeout(duration time.Duration) Option {
+	return func(s *Server) error {
+		s.writeTimeout = duration
+		return nil
+	}
+}
