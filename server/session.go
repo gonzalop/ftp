@@ -83,19 +83,12 @@ func newSession(server *Server, conn net.Conn) *session {
 func (s *session) serve() {
 	defer s.close()
 
-	// Send welcome message
 	s.reply(220, "Service ready for new user.")
 
 	for {
-		// Set read deadline
 		if s.server.maxIdleTime > 0 {
-			// Ignore deadline errors as they are non-critical
 			_ = s.conn.SetReadDeadline(time.Now().Add(s.server.maxIdleTime))
 		}
-
-		// Reset deadline (will be reset for reading)
-		// But actually we want deadline specifically for the read.
-		// Wait, the logic in previous code set it, read, then reset it.
 
 		line, err := s.readCommand()
 		if err != nil {

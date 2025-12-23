@@ -89,19 +89,23 @@ func WithMaxIdleTime(duration time.Duration) Option {
 }
 
 // WithMaxConnections sets the maximum number of simultaneous connections.
-// If 0, there is no limit. This is the default.
+// The first parameter (max) sets the global limit across all clients.
+// The second parameter (maxPerIP) sets the per-IP limit.
+// If either is 0, that limit is disabled.
 //
-// When the limit is reached, new connections receive a "421 Too many users" response.
+// When a limit is reached, new connections receive a "421 Too many users" response.
+// Both control and data connections count toward these limits.
 //
 // Example:
 //
 //	s, _ := server.NewServer(":21",
 //	    server.WithDriver(driver),
-//	    server.WithMaxConnections(100),
+//	    server.WithMaxConnections(100, 10), // Max 100 total, 10 per IP
 //	)
-func WithMaxConnections(max int) Option {
+func WithMaxConnections(max, maxPerIP int) Option {
 	return func(s *Server) error {
 		s.maxConnections = max
+		s.maxConnectionsPerIP = maxPerIP
 		return nil
 	}
 }

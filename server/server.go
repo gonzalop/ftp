@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -64,8 +65,16 @@ type Server struct {
 	// If 0, there is no limit.
 	maxConnections int
 
+	// maxConnectionsPerIP is the maximum number of simultaneous connections per IP.
+	// If 0, there is no per-IP limit.
+	maxConnectionsPerIP int
+
 	// activeConns tracks the number of currently active connections.
 	activeConns atomic.Int32
+
+	// connsByIP tracks the number of active connections per IP address.
+	connsByIP   map[string]int32
+	connsByIPMu sync.Mutex
 
 	// Shutdown handling
 	mu         sync.Mutex
@@ -112,7 +121,7 @@ var ErrServerClosed = errors.New("ftp: Server closed")
 //
 //	s, _ := server.NewServer(":21",
 //	    server.WithDriver(driver),
-//	    server.WithMaxConnections(100),
+//	    server.WithMaxConnections(100, 10), // Max 100 total, 10 per IP
 //	    server.WithMaxIdleTime(10*time.Minute),
 //	)
 func NewServer(addr string, options ...Option) (*Server, error) {
@@ -121,6 +130,7 @@ func NewServer(addr string, options ...Option) (*Server, error) {
 		logger:      slog.Default(),
 		maxIdleTime: 5 * time.Minute,
 		conns:       make(map[net.Conn]struct{}),
+		connsByIP:   make(map[string]int32),
 	}
 
 	// Apply options
@@ -171,13 +181,11 @@ func (s *Server) Shutdown() error {
 
 	// Close all active connections (control and data)
 	s.mu.Lock()
-	var conns []net.Conn
-	for conn := range s.conns {
-		conns = append(conns, conn)
-	}
+	conns := s.conns
+	s.conns = make(map[net.Conn]struct{})
 	s.mu.Unlock()
 
-	for _, conn := range conns {
+	for conn := range maps.Keys(conns) {
 		conn.Close()
 	}
 
@@ -233,31 +241,62 @@ func (s *Server) Serve(l net.Listener) error {
 
 // handleConnection handles a new client connection.
 func (s *Server) handleConnection(conn net.Conn) {
-	if s.inShutdown.Load() {
+	if !s.trackConnection(conn, true) {
 		conn.Close()
 		return
 	}
-
-	s.trackConnection(conn, true)
 	defer s.trackConnection(conn, false)
 
 	// Create a new session for this connection
 	s.handleSession(conn)
 }
 
-func (s *Server) trackConnection(conn net.Conn, add bool) {
+// trackConnection returns false if we're shutting down.
+func (s *Server) trackConnection(conn net.Conn, add bool) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if add {
-		if s.inShutdown.Load() {
-			conn.Close()
-			return
-		}
-		s.conns[conn] = struct{}{}
-	} else {
-		delete(s.conns, conn)
+	if s.inShutdown.Load() {
+		conn.Close()
+		return false
 	}
+
+	if add {
+		s.conns[conn] = struct{}{}
+
+		// Track per-IP for data connections
+		if s.maxConnectionsPerIP > 0 {
+			remoteAddr := conn.RemoteAddr().String()
+			ip, _, err := net.SplitHostPort(remoteAddr)
+			if err != nil {
+				ip = remoteAddr
+			}
+
+			s.connsByIPMu.Lock()
+			s.connsByIP[ip]++
+			s.connsByIPMu.Unlock()
+		}
+		return true
+	}
+	// remove
+	delete(s.conns, conn)
+
+	// Untrack per-IP for data connections
+	if s.maxConnectionsPerIP > 0 {
+		remoteAddr := conn.RemoteAddr().String()
+		ip, _, err := net.SplitHostPort(remoteAddr)
+		if err != nil {
+			ip = remoteAddr
+		}
+
+		s.connsByIPMu.Lock()
+		s.connsByIP[ip]--
+		if s.connsByIP[ip] <= 0 {
+			delete(s.connsByIP, ip)
+		}
+		s.connsByIPMu.Unlock()
+	}
+	return true
 }
 
 // trackingConn wraps a net.Conn to track its lifetime in the server.
@@ -273,11 +312,33 @@ func (c *trackingConn) Close() error {
 
 // handleSession handles a new client connection.
 func (s *Server) handleSession(conn net.Conn) {
+	// Check global connection limit
 	if s.maxConnections > 0 && s.activeConns.Load() >= int32(s.maxConnections) {
 		// Send 421 service not available
 		fmt.Fprintf(conn, "421 Too many users, sorry.\r\n")
 		conn.Close()
 		return
+	}
+
+	// Check per-IP connection limit
+	if s.maxConnectionsPerIP > 0 {
+		// Extract IP address (remove port)
+		remoteAddr := conn.RemoteAddr().String()
+		ip, _, err := net.SplitHostPort(remoteAddr)
+		if err != nil {
+			// If we can't parse the address, use the whole thing
+			ip = remoteAddr
+		}
+
+		s.connsByIPMu.Lock()
+		currentCount := s.connsByIP[ip]
+		if currentCount >= int32(s.maxConnectionsPerIP) {
+			s.connsByIPMu.Unlock()
+			fmt.Fprintf(conn, "421 Too many connections from your IP address.\r\n")
+			conn.Close()
+			return
+		}
+		s.connsByIPMu.Unlock()
 	}
 
 	s.activeConns.Add(1)

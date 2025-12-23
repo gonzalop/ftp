@@ -108,10 +108,11 @@ func TestWithMaxConnections(t *testing.T) {
 	driver, _ := NewFSDriver(tempDir)
 
 	maxConns := 50
+	maxPerIP := 10
 
 	s, err := NewServer(":0",
 		WithDriver(driver),
-		WithMaxConnections(maxConns),
+		WithMaxConnections(maxConns, maxPerIP),
 	)
 	if err != nil {
 		t.Fatalf("NewServer failed: %v", err)
@@ -119,6 +120,24 @@ func TestWithMaxConnections(t *testing.T) {
 
 	if s.maxConnections != maxConns {
 		t.Errorf("Expected max connections %d, got %d", maxConns, s.maxConnections)
+	}
+	if s.maxConnectionsPerIP != maxPerIP {
+		t.Errorf("Expected max connections per IP %d, got %d", maxPerIP, s.maxConnectionsPerIP)
+	}
+
+	// Test with zero values (no limits)
+	s2, err := NewServer(":0",
+		WithDriver(driver),
+		WithMaxConnections(0, 0),
+	)
+	if err != nil {
+		t.Fatalf("NewServer failed: %v", err)
+	}
+	if s2.maxConnections != 0 {
+		t.Errorf("Expected max connections 0, got %d", s2.maxConnections)
+	}
+	if s2.maxConnectionsPerIP != 0 {
+		t.Errorf("Expected max connections per IP 0, got %d", s2.maxConnectionsPerIP)
 	}
 }
 

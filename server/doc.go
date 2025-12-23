@@ -162,7 +162,7 @@
 //
 //	s, _ := server.NewServer(":21",
 //	    server.WithDriver(driver),
-//	    server.WithMaxConnections(100),           // Limit concurrent connections
+//	    server.WithMaxConnections(100, 10),       // Max 100 total, 10 per IP
 //	    server.WithMaxIdleTime(10*time.Minute),   // Idle timeout
 //	)
 //
