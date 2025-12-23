@@ -107,6 +107,7 @@ func (s *session) handleMKD(path string) {
 		"session_id", s.sessionID,
 		"remote_ip", s.remoteIP,
 		"user", s.user,
+		"host", s.host,
 		"path", path,
 	)
 	// RFC 959: 257 "PATHNAME" created.
@@ -128,6 +129,7 @@ func (s *session) handleRMD(path string) {
 		"session_id", s.sessionID,
 		"remote_ip", s.remoteIP,
 		"user", s.user,
+		"host", s.host,
 		"path", path,
 	)
 	s.reply(250, "Directory removed.")
@@ -147,6 +149,7 @@ func (s *session) handleDELE(path string) {
 		"session_id", s.sessionID,
 		"remote_ip", s.remoteIP,
 		"user", s.user,
+		"host", s.host,
 		"path", path,
 	)
 	s.reply(250, "File deleted.")

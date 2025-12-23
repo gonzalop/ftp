@@ -52,10 +52,33 @@ func (s *session) handleRETR(path string) {
 	// Reset offset after use
 	s.restartOffset = 0
 
-	if _, err := io.Copy(conn, file); err != nil {
+	// Track transfer metrics
+	startTime := time.Now()
+	bytesTransferred, err := io.Copy(conn, file)
+	if err != nil {
 		s.reply(426, "Connection closed; transfer aborted.")
 		return
 	}
+	duration := time.Since(startTime)
+
+	// Calculate throughput in MB/s
+	throughputMBps := float64(0)
+	if duration.Seconds() > 0 {
+		throughputMBps = float64(bytesTransferred) / duration.Seconds() / 1024 / 1024
+	}
+
+	// Transfer logging
+	s.server.logger.Info("transfer_complete",
+		"session_id", s.sessionID,
+		"remote_ip", s.remoteIP,
+		"user", s.user,
+		"host", s.host,
+		"operation", "RETR",
+		"path", path,
+		"bytes", bytesTransferred,
+		"duration_ms", duration.Milliseconds(),
+		"throughput_mbps", fmt.Sprintf("%.2f", throughputMBps),
+	)
 
 	s.reply(226, "Transfer complete.")
 }
@@ -102,17 +125,32 @@ func (s *session) handleSTOR(path string) {
 
 	s.reply(150, "Opening data connection for STOR.")
 
-	if _, err := io.Copy(file, conn); err != nil {
+	// Track transfer metrics
+	startTime := time.Now()
+	bytesTransferred, err := io.Copy(file, conn)
+	if err != nil {
 		s.reply(426, "Connection closed; transfer aborted.")
 		return
 	}
+	duration := time.Since(startTime)
 
-	// Security audit: file uploaded
-	s.server.logger.Info("file_uploaded",
+	// Calculate throughput in MB/s
+	throughputMBps := float64(0)
+	if duration.Seconds() > 0 {
+		throughputMBps = float64(bytesTransferred) / duration.Seconds() / 1024 / 1024
+	}
+
+	// Transfer logging
+	s.server.logger.Info("transfer_complete",
 		"session_id", s.sessionID,
 		"remote_ip", s.remoteIP,
 		"user", s.user,
+		"host", s.host,
+		"operation", "STOR",
 		"path", path,
+		"bytes", bytesTransferred,
+		"duration_ms", duration.Milliseconds(),
+		"throughput_mbps", fmt.Sprintf("%.2f", throughputMBps),
 	)
 
 	s.restartOffset = 0
