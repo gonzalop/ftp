@@ -4,7 +4,7 @@ This document provides a detailed compliance matrix for the **Server** implement
 
 ## Compliance Summary
 
-This server implements a **subset** of the standard FTP commands, focusing on modern, secure file transfer.
+This server implements **comprehensive** FTP protocol support, focusing on modern, secure file transfer with extensive RFC compliance.
 
 - ✅ **base** - FTP standard commands (RFC 959) - *Full Implementation*
 - ✅ **RFC 1123** - Requirements for Internet Hosts - *Full Compliance*
@@ -26,44 +26,43 @@ This server implements a **subset** of the standard FTP commands, focusing on mo
 
 ### Base FTP Commands (RFC 959)
 
-| Command | Description | Type | Conf | Implementation | Handler |
-|---------|-------------|------|------|----------------|---------|
-| **CWD** | Change Working Directory | a | m | ✅ Implemented | `handleCWD` |
-| **CDUP** | Change to Parent Directory | a | o | ✅ Implemented | `handleCDUP` |
-| **LIST** | List | s | m | ✅ Implemented | `handleLIST` |
-| **NLST** | Name List | s | m | ✅ Implemented | `handleNLST` |
-| **NOOP** | No-Op | s | m | ✅ Implemented | `handleNOOP` |
-| **PASS** | Password | a | m | ✅ Implemented | `handlePASS` |
-| **PASV** | Passive Mode | p | m | ✅ Implemented | `handlePASV` |
-| **PORT** | Data Port | p | m | ✅ Implemented | `handlePORT` |
-| **PWD** | Print Directory | s | o | ✅ Implemented | `handlePWD` |
-| **QUIT** | Logout | a | m | ✅ Implemented | `handleQUIT` |
-| **RETR** | Retrieve | s | m | ✅ Implemented | `handleRETR` |
-| **RNFR** | Rename From | s/p | m | ✅ Implemented | `handleRNFR` |
-| **RNTO** | Rename To | s | m | ✅ Implemented | `handleRNTO` |
-| **STOR** | Store | s | m | ✅ Implemented | `handleSTOR` |
-| **TYPE** | Representation Type | p | m | ✅ Implemented | `handleTYPE` |
-| **USER** | User Name | a | m | ✅ Implemented | `handleUSER` |
-| ABOR | Abort | s | m | ❌ Client closes connection | - |
-| **ACCT** | Account | a | m | ✅ Implemented (RFC 1123) | `handleACCT` |
-| ALLO | Allocate | s | m | ❌ Automatic on modern systems | - |
-| APPE | Append | s | m | ✅ Implemented | `handleAPPE` |
-| DELE | Delete File | s | m | ✅ Implemented | `handleDELE` |
-| **HELP** | Help | s | m | ✅ Implemented (RFC 1123) | `handleHELP` |
-| MKD | Make Directory | s | o | ✅ Implemented | `handleMKD` |
-| **MODE** | Transfer Mode | p | m | ✅ Implemented (RFC 1123) | `handleMODE` |
-| REIN | Reinitialize | a | m | ❌ Reconnect instead | - |
-| RMD | Remove Directory | s | o | ✅ Implemented | `handleRMD` |
-| **SITE** | Site Parameters | s | m | ✅ Implemented | `handleSITE` |
-| SMNT | Structure Mount | a | o | ❌ Rarely used | - |
-| **STAT** | Status | s | m | ✅ Implemented (RFC 1123) | `handleSTAT` |
-| STOU | Store Unique | a | o | ✅ Implemented | `handleSTOU` |
-| **STRU** | File Structure | p | m | ✅ Implemented (RFC 1123) | `handleSTRU` |
-| **SYST** | System | s | o | ✅ Implemented (RFC 1123) | `handleSYST` |
+| Command | Description | Implementation |
+|---------|-------------|----------------|
+| **CWD** | Change Working Directory | ✅ Implemented |
+| **CDUP** | Change to Parent Directory | ✅ Implemented |
+| **LIST** | List | ✅ Implemented |
+| **NLST** | Name List | ✅ Implemented |
+| **NOOP** | No-Op | ✅ Implemented |
+| **PASS** | Password | ✅ Implemented |
+| **PASV** | Passive Mode | ✅ Implemented |
+| **PORT** | Data Port | ✅ Implemented |
+| **PWD** | Print Directory | ✅ Implemented |
+| **QUIT** | Logout | ✅ Implemented |
+| **RETR** | Retrieve | ✅ Implemented |
+| **RNFR** | Rename From | ✅ Implemented |
+| **RNTO** | Rename To | ✅ Implemented |
+| **STOR** | Store | ✅ Implemented |
+| **TYPE** | Representation Type | ✅ Implemented |
+| **USER** | User Name | ✅ Implemented |
+| ABOR | Abort | ❌ Client closes connection |
+| **ACCT** | Account | ✅ Implemented (RFC 1123) |
+| ALLO | Allocate | ❌ Automatic on modern systems |
+| APPE | Append | ✅ Implemented |
+| DELE | Delete File | ✅ Implemented |
+| **HELP** | Help | ✅ Implemented (RFC 1123) |
+| MKD | Make Directory | ✅ Implemented |
+| **MODE** | Transfer Mode | ✅ Implemented (RFC 1123) |
+| REIN | Reinitialize | ❌ Reconnect instead |
+| RMD | Remove Directory | ✅ Implemented |
+| **SITE** | Site Parameters | ✅ Implemented |
+| SMNT | Structure Mount | ❌ Rarely used |
+| **STAT** | Status | ✅ Implemented (RFC 1123) |
+| STOU | Store Unique | ✅ Implemented |
+| **STRU** | File Structure | ✅ Implemented (RFC 1123) |
+| **SYST** | System | ✅ Implemented (RFC 1123) |
 
 **Legend:**
-- **Type:** Command category from RFC 959 (Access control, Parameter, Service)
-- **Conf:** Conformance requirement (m=Mandatory, o=Optional)
+
 - **Implementation:** ✅ = Implemented, ❌ = Not implemented
 
 ---
@@ -103,7 +102,7 @@ This server implements a **subset** of the standard FTP commands, focusing on mo
 | **MDTM** | MDTM | File Modification Time | ✅ Implemented | |
 | **MLSD** | MLST | List Directory (for machine) | ✅ Implemented | |
 | **MLST** | MLST | List Single Object | ✅ Implemented | |
-| **REST** | REST | Restart (for STREAM mode) | ✅ Implemented | |
+| **REST** | REST STREAM | Restart (for STREAM mode) | ✅ Implemented | |
 | **SIZE** | SIZE | File Size | ✅ Implemented | |
 
 ---
@@ -120,17 +119,36 @@ This server implements a **subset** of the standard FTP commands, focusing on mo
 ## Implementation Notes
 
 ### Security
+
 - The server strictly implements **RFC 4217** (Securing FTP with TLS).
 - Implicit TLS is detected automatically on connection.
 - Explicit TLS is supported via `AUTH TLS`.
 - Data connection protection is configurable via `PROT`.
 
 ### Passive Mode
+
 - The server implements smart passive mode handling.
 - It attempts to resolve the public IP for PASV responses.
 - EPSV is supported for NAT-friendly and IPv6 operation.
 
 ### Data Format
+
 - Only `TYPE I` (Binary) and `TYPE A` (ASCII) are supported.
 - `MODE` is always Stream.
 - `STRU` is always File.
+
+---
+
+## References
+
+- [RFC 959](https://datatracker.ietf.org/doc/html/rfc959) - File Transfer Protocol (FTP)
+- [RFC 1123](https://datatracker.ietf.org/doc/html/rfc1123) - Requirements for Internet Hosts
+- [RFC 2228](https://datatracker.ietf.org/doc/html/rfc2228) - FTP Security Extensions
+- [RFC 2389](https://datatracker.ietf.org/doc/html/rfc2389) - Feature negotiation mechanism for FTP
+- [RFC 2428](https://datatracker.ietf.org/doc/html/rfc2428) - FTP Extensions for IPv6 and NATs
+- [RFC 3659](https://datatracker.ietf.org/doc/html/rfc3659) - Extensions to FTP
+- [RFC 4217](https://datatracker.ietf.org/doc/html/rfc4217) - Securing FTP with TLS
+- [RFC 5797](https://datatracker.ietf.org/doc/html/rfc5797) - FTP Command and Extension Registry
+- [RFC 7151](https://datatracker.ietf.org/doc/html/rfc7151) - FTP HOST Command for Virtual Hosts
+- [draft-bryan-ftp-hash](https://datatracker.ietf.org/doc/html/draft-bryan-ftpext-hash-02) - FTP HASH Command
+

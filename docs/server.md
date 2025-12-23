@@ -1,18 +1,20 @@
-# FTP Server Library
+# FTP Server Library for Go
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/gonzalop/ftp.svg)](https://pkg.go.dev/github.com/gonzalop/ftp)
+[![Go Reference](https://pkg.go.dev/badge/github.com/gonzalop/ftp/server.svg)](https://pkg.go.dev/github.com/gonzalop/ftp/server)
 [![Tests](https://github.com/gonzalop/ftp/workflows/Tests/badge.svg)](https://github.com/gonzalop/ftp/actions)
 [![Go Report Card](https://goreportcard.com/badge/github.com/gonzalop/ftp)](https://goreportcard.com/report/github.com/gonzalop/ftp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> 💡 **Looking for the FTP client?** See [FTP Client documentation](../README.md)
+> 📖 **Navigation:** [← Main](../README.md) | [Client →](client.md) | [Examples →](../examples/) | [Compliance →](server-compliance.md)
+
+> 💡 **Looking for the FTP client?** See [FTP Client documentation](client.md)
 
 A flexible and modular FTP server implementation in Go. Embed an FTP server into your application with support for custom storage backends (filesystem, S3, database, etc.).
 
 ## Features
 
 - **Pluggable Drivers**: Abstract `Driver` interface allows backends for local filesystems, S3, memory, etc.
-    - Built-in `FSDriver` uses `os.Root` for secure filesystem access
+    - Built-in `FSDriver` uses [`os.Root`](https://pkg.go.dev/os#Root) for secure filesystem access
 - **RFC Compliance**: Implements key FTP RFCs for broad client compatibility
 - **TLS Support**: Both Explicit (AUTH TLS) and Implicit FTPS modes
 - **IPv6 Support**: Fully supports IPv6 via RFC 2428 (EPRT/EPSV)
@@ -31,6 +33,8 @@ This server implements the following RFCs:
 - **RFC 4217** (Securing FTP with TLS): `AUTH`, `PROT`, `PBSZ`.
 - **RFC 7151** (HOST Command): `HOST` (Virtual Hosting).
 - **draft-bryan-ftp-hash** (HASH Command): `HASH` (Integrity Check -  SHA-1, SHA-256, SHA-512, MD5, CRC32).
+
+📋 **[Detailed Compliance Matrix](server-compliance.md)** - Detailed tables of all FTP commands and their implementation status
 
 ## Installation
 
@@ -177,4 +181,4 @@ type ClientContext interface {
 ```
 
 ### Provided Drivers
-- **FSDriver**: A production-ready driver for serving local filesystem directories. It uses Go's secure `os.Root` API (when available) or strict path validation to enforce a root jail, preventing directory traversal attacks.
+- **FSDriver**: A production-ready driver for serving local filesystem directories. It uses Go's secure [`os.Root`](https://pkg.go.dev/os#Root) API to enforce a root jail, preventing directory traversal attacks.
