@@ -1,4 +1,4 @@
-.PHONY: all fmt lint build test fuzz
+.PHONY: all fmt lint build test fuzz coverage
 
 all: fmt lint build test
 
@@ -32,3 +32,9 @@ fuzz:
 	go test -fuzz=FuzzParseListLine -fuzztime=10s
 	# Fuzz feature parser (run for 10 seconds)
 	go test -fuzz=FuzzParseFeatures -fuzztime=10s
+
+coverage:
+	@echo "Generating coverage report..."
+	go test -coverprofile=coverage.out -coverpkg=./... ./...
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report generated at coverage.html"

@@ -297,6 +297,11 @@ func (c *fsContext) ChangeDir(path string) error {
 	return nil
 }
 
+// GetWd returns the current working directory.
+func (c *fsContext) GetWd() (string, error) {
+	return c.cwd, nil
+}
+
 // MakeDir creates a new directory with 0755 permissions.
 func (c *fsContext) MakeDir(path string) error {
 	if c.readOnly {

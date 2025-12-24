@@ -128,12 +128,22 @@ func (c *Client) openDataConn() (net.Conn, error) {
 // openActiveDataConn opens a data connection using active mode (PORT).
 // The client listens on a local port and tells the server to connect to it.
 func (c *Client) openActiveDataConn() (net.Conn, error) {
-	// Listen on a random port
-	listener, err := net.Listen("tcp", ":0")
+	// Get the local IP of the control connection
+	localAddr := c.conn.LocalAddr().String()
+	host, _, err := net.SplitHostPort(localAddr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create listener: %w", err)
+		host = "127.0.0.1" // Fallback
 	}
-	defer listener.Close()
+
+	// Listen on a random port on the same interface
+	listener, err := net.Listen("tcp", net.JoinHostPort(host, "0"))
+	if err != nil {
+		// Fallback to all interfaces if listening on specific IP fails
+		listener, err = net.Listen("tcp", ":0")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create listener: %w", err)
+		}
+	}
 
 	// Get the local address
 	addr := listener.Addr().String()
@@ -229,10 +239,17 @@ func (a *activeDataConn) Write(p []byte) (n int, err error) {
 }
 
 func (a *activeDataConn) Close() error {
+	var err1, err2 error
 	if a.conn != nil {
-		return a.conn.Close()
+		err1 = a.conn.Close()
 	}
-	return nil
+	if a.listener != nil {
+		err2 = a.listener.Close()
+	}
+	if err1 != nil {
+		return err1
+	}
+	return err2
 }
 
 func (a *activeDataConn) LocalAddr() net.Addr {

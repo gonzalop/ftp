@@ -136,6 +136,9 @@ func (s *session) handleMLST(arg string) {
 	}
 
 	_, _ = s.writer.WriteString("250- Listing follows\r\n")
+	if err := s.writer.WriteByte(' '); err != nil {
+		return
+	}
 	s.writeMLEntry(s.writer, info)
 	_, _ = s.writer.WriteString("250 End\r\n")
 	_ = s.writer.Flush()

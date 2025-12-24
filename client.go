@@ -327,26 +327,35 @@ func (c *Client) Quit() error {
 	return c.conn.Close()
 }
 
-// Type sets the transfer type (ASCII or Binary).
-// For binary transfers, use "I". For ASCII, use "A".
-// Binary mode is recommended for most file transfers.
+// Host sends the HOST command to the server.
+// This implements RFC 7151 - File Transfer Protocol HOST Command for Virtual Hosts.
+// It must be sent before the USER command.
 //
-// The client tracks the current type and only sends the TYPE command
-// if the type is changing, avoiding redundant commands.
-func (c *Client) Type(t string) error {
+// Example:
+//
+//	if err := client.Host("ftp.example.com"); err != nil {
+//	    log.Fatal(err)
+//	}
+func (c *Client) Host(host string) error {
+	_, err := c.expect2xx("HOST", host)
+	return err
+}
+
+// Type sets the transfer type (e.g., "A", "I").
+func (c *Client) Type(transferType string) error {
 	// Skip if already set to this type
-	if c.currentType == t {
-		c.logger.Debug("transfer type already set, skipping TYPE command", "type", t)
+	if c.currentType == transferType {
+		c.logger.Debug("transfer type already set, skipping TYPE command", "type", transferType)
 		return nil
 	}
 
-	_, err := c.expectCode(200, "TYPE", t)
+	_, err := c.expectCode(200, "TYPE", transferType)
 	if err != nil {
 		return err
 	}
 
 	// Track the current type
-	c.currentType = t
+	c.currentType = transferType
 	return nil
 }
 

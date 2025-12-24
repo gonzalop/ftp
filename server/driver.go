@@ -57,6 +57,9 @@ type ClientContext interface {
 	// Returns os.ErrNotExist if the directory doesn't exist.
 	ChangeDir(path string) error
 
+	// GetWd returns the current working directory.
+	GetWd() (string, error)
+
 	// MakeDir creates a new directory.
 	// Returns os.ErrExist if the directory already exists.
 	MakeDir(path string) error

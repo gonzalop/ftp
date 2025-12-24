@@ -442,7 +442,7 @@ func (s *Server) handleSession(conn net.Conn) {
 
 		s.connsByIPMu.Lock()
 		currentCount := s.connsByIP[ip]
-		if currentCount >= int32(s.maxConnectionsPerIP) {
+		if currentCount > int32(s.maxConnectionsPerIP) {
 			s.connsByIPMu.Unlock()
 			// Security audit: per-IP connection limit reached
 			s.logger.Warn("connection_rejected",

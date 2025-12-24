@@ -9,7 +9,12 @@ func (s *session) handlePWD() {
 		s.reply(530, "Please login with USER and PASS.")
 		return
 	}
-	s.reply(257, "\"/\" is the current directory.")
+	cwd, err := s.fs.GetWd()
+	if err != nil {
+		s.replyError(err)
+		return
+	}
+	s.reply(257, fmt.Sprintf("%q is the current directory.", cwd))
 }
 
 func (s *session) handleCWD(path string) {
