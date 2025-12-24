@@ -88,7 +88,7 @@ This library implements **comprehensive support** for the following RFC 5797 FEA
 | Command | FEAT Code | Description | Implementation | File |
 |---------|-----------|-------------|----------------|------|
 | **EPSV** | nat6 | Extended Passive Mode | ✅ Internal | [data.go](data.go) |
-| EPRT | nat6 | Extended Port | ❌ Not needed (client) | - |
+| **EPRT** | nat6 | Extended Port | ✅ Internal | [data.go](data.go) |
 
 ---
 

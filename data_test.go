@@ -40,3 +40,41 @@ func TestResolveDataAddr(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatEPRT(t *testing.T) {
+	tests := []struct {
+		name    string
+		addr    string
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "IPv4",
+			addr: "127.0.0.1:12345",
+			want: "|1|127.0.0.1|12345|",
+		},
+		{
+			name: "IPv6",
+			addr: "[::1]:12345",
+			want: "|2|::1|12345|",
+		},
+		{
+			name:    "Invalid",
+			addr:    "invalid",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := formatEPRT(tt.addr)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("formatEPRT() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("formatEPRT() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

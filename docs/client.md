@@ -192,11 +192,18 @@ hash, err := client.Hash("file.iso")
 fmt.Printf("SHA-256 Hash: %s\n", hash)
 ```
 
+### File Permissions (Chmod)
+
+```go
+// Change file permissions (SITE CHMOD)
+err := client.Chmod("script.sh", 0755)
+```
+
 ### Raw Commands (Quote)
 
 ```go
-// Send a raw command to the server
-resp, err := client.Quote("SITE", "CHMOD", "755", "script.sh")
+// Send a raw command to the server (e.g., custom site commands)
+resp, err := client.Quote("SITE", "UTIME", "file.txt")
 fmt.Printf("Response: %s\n", resp.Message)
 ```
 

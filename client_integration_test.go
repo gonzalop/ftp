@@ -401,6 +401,72 @@ func TestClient_ActiveMode(t *testing.T) {
 	}
 }
 
+func TestClient_ActiveModeIPv6(t *testing.T) {
+	// Try to create an IPv6 listener for the server
+	l, err := net.Listen("tcp6", "[::1]:0")
+	if err != nil {
+		t.Skip("IPv6 not supported or disabled:", err)
+	}
+
+	// 1. Setup temporary directory for server root
+	rootDir := t.TempDir()
+
+	// 2. Start Server
+	driver, err := server.NewFSDriver(rootDir,
+		server.WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+			return rootDir, false, nil // Allow write access in rootDir
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := server.NewServer(l.Addr().String(), server.WithDriver(driver))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	go func() {
+		if err := s.Serve(l); err != nil && err != server.ErrServerClosed {
+			t.Logf("Server stopped: %v", err)
+		}
+	}()
+
+	addr := l.Addr().String()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		if err := s.Shutdown(ctx); err != nil {
+			t.Logf("Shutdown error: %v", err)
+		}
+	}()
+
+	// Connect with Client using Active Mode to the IPv6 address
+	c, err := ftp.Dial(addr,
+		ftp.WithTimeout(5*time.Second),
+		ftp.WithActiveMode(),
+	)
+	if err != nil {
+		t.Fatalf("Failed to dial IPv6: %v", err)
+	}
+	defer func() {
+		if err := c.Quit(); err != nil {
+			t.Logf("Quit failed: %v", err)
+		}
+	}()
+
+	if err := c.Login("anonymous", "anonymous"); err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+
+	// Performing an operation that requires a data connection
+	// Since we are connected via IPv6, openActiveDataConn should detect it and use EPRT
+	_, err = c.List(".")
+	if err != nil {
+		t.Errorf("List in Active Mode (IPv6/EPRT) failed: %v", err)
+	}
+}
+
 func TestClient_PASV(t *testing.T) {
 	addr, cleanup, _ := setupServer(t)
 	defer cleanup()

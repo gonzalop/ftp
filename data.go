@@ -125,6 +125,35 @@ func (c *Client) openDataConn() (net.Conn, error) {
 	return c.openPassiveDataConn()
 }
 
+// formatEPRT formats an address for the EPRT command.
+// Format: |d|net-prt|net-addr|tcp-port|
+// d: delimiter (usually |)
+// net-prt: 1 for IPv4, 2 for IPv6
+// net-addr: IP address string
+// tcp-port: port number
+func formatEPRT(addr string) (string, error) {
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "", err
+	}
+
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return "", fmt.Errorf("invalid IP address: %s", host)
+	}
+
+	var netPrt int
+	if ip.To4() != nil {
+		netPrt = 1
+	} else if ip.To16() != nil {
+		netPrt = 2
+	} else {
+		return "", fmt.Errorf("unknown IP address family: %s", host)
+	}
+
+	return fmt.Sprintf("|%d|%s|%s|", netPrt, host, portStr), nil
+}
+
 // openActiveDataConn opens a data connection using active mode (PORT).
 // The client listens on a local port and tells the server to connect to it.
 func (c *Client) openActiveDataConn() (net.Conn, error) {
@@ -148,21 +177,46 @@ func (c *Client) openActiveDataConn() (net.Conn, error) {
 	// Get the local address
 	addr := listener.Addr().String()
 
-	// Format for PORT command
-	portCmd, err := formatPORT(addr)
+	// Parse local address to determine protocol version
+	localHost, _, err := net.SplitHostPort(addr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to format PORT command: %w", err)
+		return nil, err
+	}
+	ip := net.ParseIP(localHost)
+	if ip == nil {
+		return nil, fmt.Errorf("failed to parse local IP: %s", localHost)
 	}
 
-	// Send PORT command
-	resp, err := c.sendCommand("PORT", portCmd)
+	var resp *Response
+	var cmd string
+
+	// Use EPRT if IPv6, or stick to PORT for IPv4 (unless configured otherwise in future)
+	// We could use EPRT for IPv4 too, but PORT is more widely supported by legacy servers.
+	if ip.To4() == nil {
+		// IPv6 requires EPRT
+		cmd = "EPRT"
+		eprtCmd, err2 := formatEPRT(addr)
+		if err2 != nil {
+			return nil, fmt.Errorf("failed to format EPRT command: %w", err2)
+		}
+		resp, err = c.sendCommand("EPRT", eprtCmd)
+	} else {
+		// IPv4 uses PORT
+		cmd = "PORT"
+		portCmd, err2 := formatPORT(addr)
+		if err2 != nil {
+			return nil, fmt.Errorf("failed to format PORT command: %w", err2)
+		}
+		resp, err = c.sendCommand("PORT", portCmd)
+	}
+
 	if err != nil {
-		return nil, fmt.Errorf("PORT failed: %w", err)
+		return nil, fmt.Errorf("%s failed: %w", cmd, err)
 	}
 
 	if !resp.Is2xx() {
 		return nil, &ProtocolError{
-			Command:  "PORT",
+			Command:  cmd,
 			Response: resp.Message,
 			Code:     resp.Code,
 		}
