@@ -36,7 +36,9 @@ func TestHostCommand(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	rootDir := t.TempDir()
+	receivedHost := ""
 	driver, err := NewFSDriver(rootDir, WithAuthenticator(func(u, p, h string) (string, bool, error) {
+		receivedHost = h
 		return rootDir, false, nil
 	}))
 	if err != nil {
@@ -84,6 +86,11 @@ func TestHostCommand(t *testing.T) {
 	// 3. Login and perform an action that logs the host
 	if err := c.Login("test", "test"); err != nil {
 		t.Fatalf("Login failed: %v", err)
+	}
+
+	// Verify authenticator received the host
+	if receivedHost != hostName {
+		t.Errorf("Authenticator received host %q, want %q", receivedHost, hostName)
 	}
 
 	if err := c.MakeDir("testdir"); err != nil {
