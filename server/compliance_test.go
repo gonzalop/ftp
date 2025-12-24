@@ -7,7 +7,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestRFC1123Compliance(t *testing.T) {
@@ -24,20 +23,25 @@ func TestRFC1123Compliance(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	server, err := NewServer(":2125", WithDriver(driver))
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+
+	server, err := NewServer(addr, WithDriver(driver))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	go func() {
-		if err := server.ListenAndServe(); err != nil {
+		if err := server.Serve(ln); err != nil && err != ErrServerClosed {
 			t.Logf("Server stopped: %v", err)
 		}
 	}()
-	time.Sleep(100 * time.Millisecond)
 
 	// Connect with raw TCP
-	conn, err := net.Dial("tcp", "localhost:2125")
+	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		t.Fatalf("Failed to dial: %v", err)
 	}

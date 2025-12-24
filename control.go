@@ -158,10 +158,12 @@ func (c *Client) sendCommand(command string, args ...string) (*Response, error) 
 		c.logger.Debug("ftp command", "cmd", cmd)
 	}
 
-	// Update last command time
+	// Lock the client to prevent concurrent commands
 	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Update last command time
 	c.lastCommand = time.Now()
-	c.mu.Unlock()
 
 	// Set write deadline
 	if c.timeout > 0 {

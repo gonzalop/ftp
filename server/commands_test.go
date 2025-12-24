@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -25,31 +26,29 @@ func TestAdminCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	server, err := NewServer(":2122", WithDriver(driver))
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+
+	server, err := NewServer(addr, WithDriver(driver))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Run server in goroutine
 	go func() {
-		if err := server.ListenAndServe(); err != nil {
+		if err := server.Serve(ln); err != nil && err != ErrServerClosed {
 			t.Logf("Server stopped: %v", err)
 		}
 	}()
 
-	// Give it a moment to start
-	time.Sleep(100 * time.Millisecond)
-
 	// 3. Connect with Client
-	c, err := ftp.Dial("localhost:2122", ftp.WithTimeout(5*time.Second))
+	c, err := ftp.Dial(addr, ftp.WithTimeout(2*time.Second))
 	if err != nil {
 		t.Fatalf("Failed to dial: %v", err)
 	}
-	defer func() {
-		if err := c.Quit(); err != nil {
-			t.Logf("Quit failed: %v", err)
-		}
-	}()
 
 	// 4. Authenticate
 	if err := c.Login("admin", "admin"); err != nil {
@@ -122,19 +121,24 @@ func TestReadOnlyCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	server, err := NewServer(":2123", WithDriver(driver))
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+
+	server, err := NewServer(addr, WithDriver(driver))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	go func() {
-		if err := server.ListenAndServe(); err != nil {
+		if err := server.Serve(ln); err != nil && err != ErrServerClosed {
 			t.Logf("Server stopped: %v", err)
 		}
 	}()
-	time.Sleep(100 * time.Millisecond)
 
-	c, err := ftp.Dial("localhost:2123", ftp.WithTimeout(5*time.Second))
+	c, err := ftp.Dial(addr, ftp.WithTimeout(5*time.Second))
 	if err != nil {
 		t.Fatalf("Failed to dial: %v", err)
 	}

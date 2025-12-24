@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -33,23 +34,27 @@ func TestServerIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	server, err := NewServer(":2121", WithDriver(driver))
+	// Listen on random port
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+
+	server, err := NewServer(addr, WithDriver(driver))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Run server in goroutine
 	go func() {
-		if err := server.ListenAndServe(); err != nil {
+		if err := server.Serve(ln); err != nil && err != ErrServerClosed {
 			t.Logf("Server stopped: %v", err)
 		}
 	}()
 
-	// Give it a moment to start
-	time.Sleep(100 * time.Millisecond)
-
 	// 3. Connect with Client
-	c, err := ftp.Dial("localhost:2121", ftp.WithTimeout(5*time.Second))
+	c, err := ftp.Dial(addr, ftp.WithTimeout(5*time.Second))
 	if err != nil {
 		t.Fatalf("Failed to dial: %v", err)
 	}
