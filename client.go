@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -55,6 +56,18 @@ type Client struct {
 
 	// currentType tracks the current transfer type to avoid redundant TYPE commands
 	currentType string
+
+	// mu protects concurrency-sensitive fields
+	mu sync.Mutex
+
+	// lastCommand tracks the time of the last command sent
+	lastCommand time.Time
+
+	// quitChan signals the keep-alive goroutine to stop
+	quitChan chan struct{}
+
+	// transferInProgress indicates if a data transfer is active (atomic)
+	transferInProgress int32
 }
 
 // Dial connects to an FTP server at the given address.
@@ -125,6 +138,12 @@ func Dial(addr string, options ...Option) (*Client, error) {
 	if err := c.connect(); err != nil {
 		return nil, err
 	}
+
+	// Initialize last command time
+	c.lastCommand = time.Now()
+
+	// Start keep-alive loop if enabled
+	c.startKeepAlive()
 
 	return c, nil
 }
@@ -294,6 +313,11 @@ func (c *Client) Login(username, password string) error {
 func (c *Client) Quit() error {
 	if c.conn == nil {
 		return nil
+	}
+
+	// Stop keep-alive loop
+	if c.quitChan != nil {
+		close(c.quitChan)
 	}
 
 	// Send QUIT command (ignore errors, we're closing anyway)

@@ -6,6 +6,7 @@ import (
 	"net"
 	"regexp"
 	"strconv"
+	"sync/atomic"
 	"time"
 )
 
@@ -345,10 +346,14 @@ func (c *Client) cmdDataConnFrom(cmd string, args ...string) (net.Conn, error) {
 		return nil, err
 	}
 
+	// Mark transfer as in progress
+	atomic.StoreInt32(&c.transferInProgress, 1)
+
 	// Send the command
 	resp, err := c.sendCommand(cmd, args...)
 	if err != nil {
 		dataConn.Close()
+		atomic.StoreInt32(&c.transferInProgress, 0)
 		return nil, err
 	}
 
@@ -360,6 +365,7 @@ func (c *Client) cmdDataConnFrom(cmd string, args ...string) (net.Conn, error) {
 		// We'll be lenient and accept both
 		if resp.Code < 100 || resp.Code >= 400 {
 			dataConn.Close()
+			atomic.StoreInt32(&c.transferInProgress, 0)
 			return nil, &ProtocolError{
 				Command:  cmd,
 				Response: resp.Message,
@@ -395,6 +401,9 @@ func (c *Client) finishDataConn(dataConn net.Conn) error {
 	if c.logger != nil {
 		c.logger.Debug("ftp data transfer complete", "code", resp.Code, "message", resp.Message)
 	}
+
+	// Mark transfer as complete
+	atomic.StoreInt32(&c.transferInProgress, 0)
 
 	if !resp.Is2xx() {
 		return &ProtocolError{

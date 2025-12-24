@@ -158,6 +158,11 @@ func (c *Client) sendCommand(command string, args ...string) (*Response, error) 
 		c.logger.Debug("ftp command", "cmd", cmd)
 	}
 
+	// Update last command time
+	c.mu.Lock()
+	c.lastCommand = time.Now()
+	c.mu.Unlock()
+
 	// Set write deadline
 	if c.timeout > 0 {
 		if err := c.conn.SetWriteDeadline(time.Now().Add(c.timeout)); err != nil {
