@@ -14,12 +14,36 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/gonzalop/ftp"
 	"github.com/gonzalop/ftp/server"
 )
+
+type safeBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (s *safeBuffer) Write(p []byte) (n int, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.Write(p)
+}
+
+func (s *safeBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.String()
+}
+
+func (s *safeBuffer) Bytes() []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]byte(nil), s.buf.Bytes()...)
+}
 
 // setupServer starts a local FTP server for testing.
 // Returns the server address, a cleanup function, and the root directory path.
@@ -313,7 +337,7 @@ func TestClient_KeepAlive(t *testing.T) {
 	defer cleanup()
 
 	// Capture logs to verify keep-alive activity
-	var logBuf bytes.Buffer
+	var logBuf safeBuffer
 	logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	idleTimeout := 100 * time.Millisecond

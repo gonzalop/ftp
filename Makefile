@@ -1,4 +1,4 @@
-.PHONY: all fmt lint build test fuzz coverage
+.PHONY: all fmt lint build test test-race fuzz coverage
 
 all: fmt lint build test
 
@@ -25,6 +25,10 @@ build:
 test:
 	@echo "Running tests..."
 	go test -v ./...
+
+test-race:
+	@echo "Running tests with race detection..."
+	go test -race -v ./...
 
 fuzz:
 	@echo "Running fuzz tests..."
