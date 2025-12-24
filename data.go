@@ -160,7 +160,11 @@ func (c *Client) openActiveDataConn() (net.Conn, error) {
 	// Accept the connection from the server
 	// Note: The actual connection happens after we send the transfer command (RETR, STOR, etc.)
 	// So we return a wrapper that will accept when needed
-	return &activeDataConn{listener: listener, tlsConfig: c.tlsConfig}, nil
+	return &activeDataConn{
+		listener:  listener,
+		tlsConfig: c.tlsConfig,
+		timeout:   c.timeout,
+	}, nil
 }
 
 // activeDataConn wraps a listener for active mode connections.
@@ -168,42 +172,57 @@ type activeDataConn struct {
 	listener  net.Listener
 	conn      net.Conn
 	tlsConfig *tls.Config
+	timeout   time.Duration
+}
+
+func (a *activeDataConn) accept() error {
+	if a.timeout > 0 {
+		if l, ok := a.listener.(*net.TCPListener); ok {
+			_ = l.SetDeadline(time.Now().Add(a.timeout))
+		}
+	}
+	c, err := a.listener.Accept()
+	if err != nil {
+		return err
+	}
+	a.conn = c
+
+	// Wrap in TLS if needed
+	if a.tlsConfig != nil {
+		tlsConn := tls.Server(a.conn, a.tlsConfig)
+		// Set deadline for handshake
+		if a.timeout > 0 {
+			_ = a.conn.SetDeadline(time.Now().Add(a.timeout))
+		}
+		if err := tlsConn.Handshake(); err != nil {
+			a.conn.Close()
+			return err
+		}
+		a.conn = tlsConn
+	}
+	return nil
 }
 
 func (a *activeDataConn) Read(p []byte) (n int, err error) {
 	if a.conn == nil {
-		a.conn, err = a.listener.Accept()
-		if err != nil {
+		if err := a.accept(); err != nil {
 			return 0, err
 		}
-		// Wrap in TLS if needed
-		if a.tlsConfig != nil {
-			tlsConn := tls.Server(a.conn, a.tlsConfig)
-			if err := tlsConn.Handshake(); err != nil {
-				a.conn.Close()
-				return 0, err
-			}
-			a.conn = tlsConn
-		}
+	}
+	if a.timeout > 0 {
+		_ = a.conn.SetReadDeadline(time.Now().Add(a.timeout))
 	}
 	return a.conn.Read(p)
 }
 
 func (a *activeDataConn) Write(p []byte) (n int, err error) {
 	if a.conn == nil {
-		a.conn, err = a.listener.Accept()
-		if err != nil {
+		if err := a.accept(); err != nil {
 			return 0, err
 		}
-		// Wrap in TLS if needed
-		if a.tlsConfig != nil {
-			tlsConn := tls.Server(a.conn, a.tlsConfig)
-			if err := tlsConn.Handshake(); err != nil {
-				a.conn.Close()
-				return 0, err
-			}
-			a.conn = tlsConn
-		}
+	}
+	if a.timeout > 0 {
+		_ = a.conn.SetWriteDeadline(time.Now().Add(a.timeout))
 	}
 	return a.conn.Write(p)
 }
@@ -305,7 +324,12 @@ func (c *Client) openPassiveDataConn() (net.Conn, error) {
 			dataConn.Close()
 			return nil, fmt.Errorf("data connection TLS handshake failed: %w", err)
 		}
-		return tlsConn, nil
+		dataConn = tlsConn
+	}
+
+	// Wrap with deadline connection if timeout is set
+	if c.timeout > 0 {
+		return &deadlineConn{Conn: dataConn, timeout: c.timeout}, nil
 	}
 
 	return dataConn, nil
@@ -353,6 +377,13 @@ func (c *Client) finishDataConn(dataConn net.Conn) error {
 	// Close the data connection
 	if err := dataConn.Close(); err != nil {
 		return fmt.Errorf("failed to close data connection: %w", err)
+	}
+
+	// Set read deadline for the final response
+	if c.timeout > 0 {
+		if err := c.conn.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
+			return fmt.Errorf("failed to set read deadline: %w", err)
+		}
 	}
 
 	// Read the final response (should be 226 Transfer complete)

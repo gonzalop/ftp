@@ -27,6 +27,10 @@ type Client struct {
 	// timeout is the timeout for operations
 	timeout time.Duration
 
+	// idleTimeout is the maximum time to wait before sending NOOP to keep connection alive
+	// If zero, no automatic keep-alive is performed
+	idleTimeout time.Duration
+
 	// logger is used for debug logging
 	logger *slog.Logger
 
@@ -142,6 +146,15 @@ func (c *Client) connect() error {
 		// Wrap in TLS
 		c.logger.Debug("starting TLS handshake", "mode", "implicit")
 		tlsConn := tls.Client(conn, c.tlsConfig)
+
+		// Set deadline for handshake
+		if c.timeout > 0 {
+			if err := conn.SetDeadline(time.Now().Add(c.timeout)); err != nil {
+				conn.Close()
+				return fmt.Errorf("failed to set deadline: %w", err)
+			}
+		}
+
 		if err := tlsConn.Handshake(); err != nil {
 			conn.Close()
 			return fmt.Errorf("TLS handshake failed: %w", err)
@@ -159,6 +172,14 @@ func (c *Client) connect() error {
 
 	// Set up buffered reader
 	c.reader = bufio.NewReader(c.conn)
+
+	// Set read deadline for greeting
+	if c.timeout > 0 {
+		if err := c.conn.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
+			c.conn.Close()
+			return fmt.Errorf("failed to set read deadline: %w", err)
+		}
+	}
 
 	// Read the greeting (220 response)
 	resp, err := readResponse(c.reader)
@@ -210,6 +231,14 @@ func (c *Client) upgradeToTLS() error {
 	// Wrap the connection in TLS
 	c.logger.Debug("starting TLS handshake", "mode", "explicit")
 	tlsConn := tls.Client(c.conn, c.tlsConfig)
+
+	// Set deadline for handshake
+	if c.timeout > 0 {
+		if err := c.conn.SetDeadline(time.Now().Add(c.timeout)); err != nil {
+			return fmt.Errorf("failed to set deadline: %w", err)
+		}
+	}
+
 	if err := tlsConn.Handshake(); err != nil {
 		return fmt.Errorf("TLS handshake failed: %w", err)
 	}

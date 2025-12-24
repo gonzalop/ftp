@@ -6,6 +6,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Response represents an FTP server response.
@@ -157,10 +158,25 @@ func (c *Client) sendCommand(command string, args ...string) (*Response, error) 
 		c.logger.Debug("ftp command", "cmd", cmd)
 	}
 
+	// Set write deadline
+	if c.timeout > 0 {
+		if err := c.conn.SetWriteDeadline(time.Now().Add(c.timeout)); err != nil {
+			return nil, fmt.Errorf("failed to set write deadline: %w", err)
+		}
+	}
+
 	// Send the command
 	_, err := fmt.Fprintf(c.conn, "%s\r\n", cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send command: %w", err)
+	}
+
+	// Set read deadline for response
+	// Note: We set it on the underlying connection, not the bufio Reader
+	if c.timeout > 0 {
+		if err := c.conn.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
+			return nil, fmt.Errorf("failed to set read deadline: %w", err)
+		}
 	}
 
 	// Read the response

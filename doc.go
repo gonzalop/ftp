@@ -116,6 +116,19 @@
 //	    }
 //	}
 //
+// # Connection Management
+//
+// Configure timeouts and keep-alive:
+//
+//	client, err := ftp.Dial("ftp.example.com:21",
+//	    ftp.WithTimeout(30*time.Second),        // Operation timeout
+//	    ftp.WithIdleTimeout(5*time.Minute),     // Keep-alive interval
+//	)
+//
+// The idle timeout automatically sends NOOP commands to prevent the server
+// from closing idle connections. This is useful for long-running operations
+// or when keeping a connection open for extended periods.
+//
 // # Custom Listing Parsers
 //
 // If you encounter a server with a non-standard LIST format, you can implement

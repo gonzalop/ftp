@@ -20,6 +20,25 @@ func WithTimeout(timeout time.Duration) Option {
 	}
 }
 
+// WithIdleTimeout sets the maximum idle time before sending NOOP keep-alive.
+// If the connection is idle for longer than this duration, a NOOP command
+// will be sent automatically to prevent the server from closing the connection.
+//
+// This is useful for long-running operations or when keeping a connection
+// open for extended periods. Set to 0 to disable automatic keep-alive.
+//
+// Example:
+//
+//	client, _ := ftp.Dial("ftp.example.com:21",
+//	    ftp.WithIdleTimeout(5*time.Minute),
+//	)
+func WithIdleTimeout(timeout time.Duration) Option {
+	return func(c *Client) error {
+		c.idleTimeout = timeout
+		return nil
+	}
+}
+
 // WithExplicitTLS enables explicit TLS mode (AUTH TLS).
 // The client connects on the standard FTP port (21) and upgrades to TLS
 // using the AUTH TLS command. This is the recommended mode for FTPS.
