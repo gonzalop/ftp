@@ -90,6 +90,8 @@ func main() {
 ### Client Features
 
 - **TLS/FTPS** - Both explicit (AUTH TLS) and implicit modes
+- **Automatic Keep-Alive** - Prevents timeouts during idle periods or long transfers
+- **Debug Logging** - Structured logging with `log/slog` for easier debugging
 - **Progress Tracking** - Built-in callbacks for upload/download progress
 - **Resume Transfers** - Resume interrupted downloads/uploads (REST)
 - **Modern Extensions** - MLST/MLSD, SIZE, MDTM, HASH support
@@ -101,6 +103,7 @@ func main() {
 ### Server Features
 
 - **Pluggable Backends** - Filesystem, S3, memory, or custom storage
+- **Graceful Shutdown** - Stop accepting connections and wait for active transfers
 - **TLS/FTPS** - Explicit and implicit FTPS support
 - **Virtual Hosting** - HOST command for multi-tenant setups (RFC 7151)
 - **File Hashing** - HASH command with SHA-256, SHA-512, MD5, CRC32
