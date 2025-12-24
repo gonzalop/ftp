@@ -70,9 +70,16 @@ func WithImplicitTLS(config *tls.Config) Option {
 	}
 }
 
-// WithDebug enables debug logging using the provided logger.
+// WithLogger enables debug logging using the provided logger.
 // All FTP commands and responses will be logged at debug level.
-func WithDebug(logger *slog.Logger) Option {
+//
+// Example:
+//
+//	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+//	    Level: slog.LevelDebug,
+//	}))
+//	client, _ := ftp.Dial("ftp.example.com:21", ftp.WithLogger(logger))
+func WithLogger(logger *slog.Logger) Option {
 	return func(c *Client) error {
 		c.logger = logger
 		return nil

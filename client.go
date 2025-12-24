@@ -48,6 +48,9 @@ type Client struct {
 
 	// parsers stores the list of directory listing parsers
 	parsers []ListingParser
+
+	// currentType tracks the current transfer type to avoid redundant TYPE commands
+	currentType string
 }
 
 // Dial connects to an FTP server at the given address.
@@ -96,6 +99,7 @@ func Dial(addr string, options ...Option) (*Client, error) {
 		timeout: 30 * time.Second,
 		tlsMode: tlsModeNone,
 		dialer:  &net.Dialer{},
+		logger:  slog.New(slog.NewTextHandler(nil, &slog.HandlerOptions{Level: slog.LevelError + 1})), // No-op logger by default
 		parsers: []ListingParser{
 			&EPLFParser{},
 			&DOSParser{},
@@ -125,24 +129,29 @@ func Dial(addr string, options ...Option) (*Client, error) {
 func (c *Client) connect() error {
 	var err error
 
+	addr := net.JoinHostPort(c.host, c.port)
+	c.logger.Debug("connecting to ftp server", "addr", addr, "tls_mode", c.tlsMode)
+
 	// For implicit TLS, wrap the connection immediately
 	if c.tlsMode == tlsModeImplicit {
-		conn, err := c.dialer.Dial("tcp", net.JoinHostPort(c.host, c.port))
+		conn, err := c.dialer.Dial("tcp", addr)
 		if err != nil {
 			return fmt.Errorf("failed to connect: %w", err)
 		}
 
 		// Wrap in TLS
+		c.logger.Debug("starting TLS handshake", "mode", "implicit")
 		tlsConn := tls.Client(conn, c.tlsConfig)
 		if err := tlsConn.Handshake(); err != nil {
 			conn.Close()
 			return fmt.Errorf("TLS handshake failed: %w", err)
 		}
+		c.logger.Debug("TLS handshake complete", "mode", "implicit")
 
 		c.conn = tlsConn
 	} else {
 		// Plain connection or explicit TLS
-		c.conn, err = c.dialer.Dial("tcp", net.JoinHostPort(c.host, c.port))
+		c.conn, err = c.dialer.Dial("tcp", addr)
 		if err != nil {
 			return fmt.Errorf("failed to connect: %w", err)
 		}
@@ -199,10 +208,12 @@ func (c *Client) upgradeToTLS() error {
 	}
 
 	// Wrap the connection in TLS
+	c.logger.Debug("starting TLS handshake", "mode", "explicit")
 	tlsConn := tls.Client(c.conn, c.tlsConfig)
 	if err := tlsConn.Handshake(); err != nil {
 		return fmt.Errorf("TLS handshake failed: %w", err)
 	}
+	c.logger.Debug("TLS handshake complete", "mode", "explicit")
 
 	c.conn = tlsConn
 	c.reader = bufio.NewReader(c.conn)
@@ -266,9 +277,24 @@ func (c *Client) Quit() error {
 // Type sets the transfer type (ASCII or Binary).
 // For binary transfers, use "I". For ASCII, use "A".
 // Binary mode is recommended for most file transfers.
+//
+// The client tracks the current type and only sends the TYPE command
+// if the type is changing, avoiding redundant commands.
 func (c *Client) Type(t string) error {
+	// Skip if already set to this type
+	if c.currentType == t {
+		c.logger.Debug("transfer type already set, skipping TYPE command", "type", t)
+		return nil
+	}
+
 	_, err := c.expectCode(200, "TYPE", t)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Track the current type
+	c.currentType = t
+	return nil
 }
 
 // Features queries the server for supported features using the FEAT command.

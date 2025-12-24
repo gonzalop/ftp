@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"time"
 
@@ -20,12 +21,16 @@ func main() {
 	// Uncomment to test with your TLS-enabled server:
 	// explicitTLSExample()
 
-	fmt.Println("\n=== Example 3: File Operations ===")
+	fmt.Println("\n=== Example 3: Non-Mutating Operations (GNU FTP) ===")
+	fmt.Println("(Requires an empty directory called 'temp')")
+	// testNonMutatingOperations()
+
+	fmt.Println("\n=== Example 4: File Operations ===")
 	fmt.Println("(Requires write access to a server)")
 	// Uncomment to test file operations:
 	// fileOperationsExample()
 
-	fmt.Println("\n=== Example 4: Custom Listing Parser ===")
+	fmt.Println("\n=== Example 5: Custom Listing Parser ===")
 	fmt.Println("(See the code)")
 	// customParserExample()
 }
@@ -70,8 +75,139 @@ func plainFTPExample() {
 			fmt.Printf("  ... and %d more\n", len(entries)-5)
 			break
 		}
-		fmt.Printf("  - %s (%s)\n", entry.Name, entry.Type)
+		fmt.Printf("  - %q (%s)\n", entry.Name, entry.Type)
 	}
+}
+
+// testNonMutatingOperations demonstrates read-only operations on GNU FTP server
+func testNonMutatingOperations() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	//s, _ := server.NewServer(":21",
+	//server.WithDriver(driver),
+	//server.WithLogger(logger),
+
+	// Connect to GNU FTP server
+	client, err := ftp.Dial("ftp.gnu.org:21",
+		ftp.WithTimeout(10*time.Second),
+		ftp.WithLogger(logger),
+	)
+	if err != nil {
+		log.Printf("Failed to connect: %v", err)
+		return
+	}
+	defer client.Quit()
+
+	// Login anonymously
+	if err := client.Login("anonymous", "anonymous@example.com"); err != nil {
+		log.Printf("Failed to login: %v", err)
+		return
+	}
+	fmt.Println("✓ Connected to ftp.gnu.org")
+
+	// 1. Discover server features
+	fmt.Println("\n--- Server Features ---")
+	features, err := client.Features()
+	if err != nil {
+		log.Printf("Failed to get features: %v", err)
+	} else {
+		fmt.Printf("✓ Server supports %d features:\n", len(features))
+		for feat, params := range features {
+			if params != "" {
+				fmt.Printf("  - %s: %s\n", feat, params)
+			} else {
+				fmt.Printf("  - %s\n", feat)
+			}
+		}
+	}
+
+	// 2. Get current directory
+	fmt.Println("\n--- Current Directory ---")
+	dir, err := client.CurrentDir()
+	if err != nil {
+		log.Printf("Failed to get current directory: %v", err)
+	} else {
+		fmt.Printf("✓ Current directory: %s\n", dir)
+	}
+
+	// 3. List directory contents
+	fmt.Println("\n--- Directory Listing ---")
+	entries, err := client.List("/gnu/screen")
+	if err != nil {
+		log.Printf("Failed to list directory: %v", err)
+	} else {
+		fmt.Printf("✓ Found %d entries in /gnu:\n", len(entries))
+		for i, entry := range entries {
+			if i >= 10 {
+				fmt.Printf("  ... and %d more\n", len(entries)-10)
+				break
+			}
+			fmt.Printf("  - %s (%s, %d bytes)\n", entry.Name, entry.Type, entry.Size)
+		}
+	}
+
+	// 4. Test name list
+	fmt.Println("\n--- Name List ---")
+	names, err := client.NameList("/gnu")
+	if err != nil {
+		log.Printf("Failed to get name list: %v", err)
+	} else {
+		fmt.Printf("✓ Found %d names (first 5):\n", len(names))
+		for i, name := range names {
+			if i >= 5 {
+				break
+			}
+			fmt.Printf("  - %s\n", name)
+		}
+	}
+
+	// 5. Test file size if we found a file
+	if len(entries) > 0 {
+		for _, entry := range entries {
+			if entry.Type == "file" {
+				fmt.Println("\n--- File Size ---")
+				size, err := client.Size(entry.Name)
+				if err != nil {
+					log.Printf("Failed to get size for %s: %v", entry.Name, err)
+				} else {
+					fmt.Printf("✓ %s: %d bytes\n", entry.Name, size)
+				}
+				break
+			}
+		}
+	}
+
+	// 6. Test modification time if supported
+	if client.HasFeature("MDTM") && len(entries) > 0 {
+		for _, entry := range entries {
+			if entry.Type == "file" {
+				fmt.Println("\n--- File Modification Time ---")
+				modTime, err := client.ModTime(entry.Name)
+				if err != nil {
+					log.Printf("Failed to get mod time for %s: %v", entry.Name, err)
+				} else {
+					fmt.Printf("✓ %s modified: %s\n", entry.Name, modTime.Format("2006-01-02 15:04:05 MST"))
+				}
+				break
+			}
+		}
+	}
+
+	// 7. Test NOOP (keep-alive)
+	fmt.Println("\n--- Keep-Alive Test ---")
+	if err := client.Noop(); err != nil {
+		log.Printf("NOOP failed: %v", err)
+	} else {
+		fmt.Println("✓ NOOP successful (connection alive)")
+	}
+
+	fmt.Println("\n✓ All non-mutating operations completed successfully")
+
+	// 8. Download screen
+	fmt.Println("\n--- Download screen ---")
+	client.DownloadDir("/gnu/screen", "temp")
 }
 
 func explicitTLSExample() {
