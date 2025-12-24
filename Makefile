@@ -24,10 +24,6 @@ build:
 
 test:
 	@echo "Running tests..."
-	go test -v ./...
-
-test-race:
-	@echo "Running tests with race detection..."
 	go test -race -v ./...
 
 fuzz:

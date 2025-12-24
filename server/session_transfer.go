@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -284,6 +285,30 @@ func (s *session) handlePORT(arg string) {
 	s.reply(200, "PORT command successful.")
 }
 
+func (s *session) listenPassive() (net.Listener, error) {
+	settings := s.fs.GetSettings()
+	if settings != nil && settings.PasvMinPort > 0 && settings.PasvMaxPort >= settings.PasvMinPort {
+		minPort := settings.PasvMinPort
+		maxPort := settings.PasvMaxPort
+		rangeLen := int32(maxPort - minPort + 1)
+
+		// Get a starting offset using round-robin
+		startOffset := atomic.AddInt32(&s.server.nextPassivePort, 1)
+
+		for i := int32(0); i < rangeLen; i++ {
+			offset := (startOffset + i) % rangeLen
+			port := int(int32(minPort) + offset)
+
+			ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+			if err == nil {
+				return ln, nil
+			}
+		}
+		return nil, fmt.Errorf("no available ports in range [%d, %d]", minPort, maxPort)
+	}
+	return net.Listen("tcp", ":0")
+}
+
 func (s *session) handlePASV() {
 	if !s.isLoggedIn {
 		s.reply(530, "Please login with USER and PASS.")
@@ -294,7 +319,7 @@ func (s *session) handlePASV() {
 		s.pasvList.Close()
 	}
 
-	ln, err := net.Listen("tcp", "")
+	ln, err := s.listenPassive()
 	if err != nil {
 		s.reply(425, "Can't open passive connection.")
 		return
@@ -364,7 +389,7 @@ func (s *session) handleEPSV() {
 		s.pasvList.Close()
 	}
 
-	ln, err := net.Listen("tcp", "")
+	ln, err := s.listenPassive()
 	if err != nil {
 		s.reply(425, "Can't open passive connection.")
 		return
