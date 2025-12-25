@@ -37,23 +37,16 @@ import (
 )
 
 func main() {
-    // Connect with TLS
-    client, _ := ftp.Dial("ftp.example.com:21",
-        ftp.WithExplicitTLS(&tls.Config{
-            ServerName: "ftp.example.com",
-        }),
-    )
+    // Connect to server (handles ftp, ftps, ftp+explicit)
+    // and automatically logs in (default: anonymous)
+    client, _ := ftp.Connect("ftp://ftp.example.com")
     defer client.Quit()
     
-    client.Login("user", "pass")
-    
     // Upload file
-    file, _ := os.Open("local.txt")
-    client.Store("remote.txt", file)
+    client.UploadFile("local.txt", "remote.txt")
     
     // Download file
-    outFile, _ := os.Create("download.txt")
-    client.Retrieve("remote.txt", outFile)
+    client.DownloadFile("remote.txt", "download.txt")
 }
 ```
 
@@ -70,16 +63,9 @@ import (
 )
 
 func main() {
-    // Create filesystem driver
-    driver, _ := server.NewFSDriver("/var/ftp")
-    
-    // Create and start server
-    srv, _ := server.NewServer(":21",
-        server.WithDriver(driver),
-    )
-    
+    // Start a standard server on port 21 serving files from /var/ftp
     log.Println("FTP server listening on :21")
-    srv.ListenAndServe()
+    log.Fatal(server.ListenAndServe(":21", "/var/ftp"))
 }
 ```
 

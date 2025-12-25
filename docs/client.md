@@ -44,7 +44,28 @@ This client implements the following RFCs:
 go get github.com/gonzalop/ftp
 ```
 
-## Quick Start
+## Usage
+ 
+ ### Quick Start
+ 
+ Use the `Connect` helper to connect in one line using a URL. It supports `ftp://`, `ftps://` (implicit), and `ftp+explicit://`.
+ 
+ ```go
+ // Connect to a public FTP server (anonymous login default)
+ client, err := ftp.Connect("ftp://ftp.example.com")
+ if err != nil {
+     log.Fatal(err)
+ }
+ defer client.Quit()
+ 
+ // Upload a file
+ client.UploadFile("local.txt", "remote.txt")
+ 
+ // Download a file
+ client.DownloadFile("remote.txt", "download.txt")
+ ```
+ 
+ ### Manual Setup
 
 ### Plain FTP Connection
 

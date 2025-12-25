@@ -46,7 +46,26 @@ go get github.com/gonzalop/ftp/server
 
 ## Usage
 
-### Basic Example (Filesystem Driver)
+### Quick Start
+
+Start a standard server on port 21 serving files from `/var/ftp`:
+
+```go
+package main
+
+import (
+    "log"
+    "github.com/gonzalop/ftp/server"
+)
+
+func main() {
+    log.Fatal(server.ListenAndServe(":21", "/var/ftp"))
+}
+```
+
+### Manual Setup
+
+The following example shows how to manually configure the driver and server, which allows for more customization (e.g. disabling anonymous access).
 
 ```go
 package main
