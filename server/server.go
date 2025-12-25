@@ -181,6 +181,33 @@ func NewServer(addr string, options ...Option) (*Server, error) {
 	return s, nil
 }
 
+// ListenAndServe acts as a high-level helper to start a simple filesystem-based FTP server.
+// It creates an FSDriver rooted at rootPath and starts the server on addr.
+//
+// Defaults:
+//   - Anonymous login allowed (read-only)
+//   - Standard timeouts
+//
+// Example:
+//
+//	log.Fatal(server.ListenAndServe(":21", "/var/ftp"))
+func ListenAndServe(addr string, rootPath string, options ...Option) error {
+	driver, err := NewFSDriver(rootPath)
+	if err != nil {
+		return fmt.Errorf("failed to create driver: %w", err)
+	}
+
+	// Prepend the driver option so it can be overridden if needed (though unlikely for this helper)
+	opts := append([]Option{WithDriver(driver)}, options...)
+
+	s, err := NewServer(addr, opts...)
+	if err != nil {
+		return fmt.Errorf("failed to create server: %w", err)
+	}
+
+	return s.ListenAndServe()
+}
+
 // redactPath applies custom path redaction if configured.
 func (s *Server) redactPath(path string) string {
 	if s.pathRedactor == nil {
