@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -145,6 +147,82 @@ func Dial(addr string, options ...Option) (*Client, error) {
 
 	// Start keep-alive loop if enabled
 	c.startKeepAlive()
+
+	return c, nil
+}
+
+// Connect connects to an FTP server using a URL.
+// Supported schemes: "ftp", "ftps" (implicit), "ftp+explicit" (explicit TLS).
+// Format: scheme://[user:password@]host[:port][/path]
+//
+// Examples:
+//
+//	ftp://ftp.example.com
+//	ftp://user:pass@ftp.example.com:2121
+//	ftps://ftp.example.com (Implicit TLS, port 990)
+//	ftp+explicit://ftp.example.com (Explicit TLS, port 21)
+func Connect(urlStr string) (*Client, error) {
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid URL: %w", err)
+	}
+
+	// Determine port and TLS mode based on scheme
+	var port string
+	var options []Option
+	host := u.Hostname()
+	port = u.Port()
+
+	switch strings.ToLower(u.Scheme) {
+	case "ftp":
+		if port == "" {
+			port = "21"
+		}
+	case "ftps":
+		if port == "" {
+			port = "990"
+		}
+		// Use implicit TLS with default settings (server verification enabled)
+		// Users who need custom TLS configs (e.g. self-signed) should use Dial instead.
+		options = append(options, WithImplicitTLS(&tls.Config{ServerName: host}))
+	case "ftp+explicit":
+		if port == "" {
+			port = "21"
+		}
+		options = append(options, WithExplicitTLS(&tls.Config{ServerName: host}))
+	default:
+		return nil, fmt.Errorf("unsupported scheme: %s", u.Scheme)
+	}
+
+	addr := net.JoinHostPort(host, port)
+	c, err := Dial(addr, options...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Login if credentials are provided, otherwise default to anonymous
+	user := u.User.Username()
+	pass, hasPass := u.User.Password()
+
+	if user == "" {
+		user = "anonymous"
+		pass = "anonymous@"
+	} else if !hasPass {
+		pass = ""
+	}
+
+	if err := c.Login(user, pass); err != nil {
+		_ = c.Quit()
+		return nil, fmt.Errorf("login failed: %w", err)
+	}
+
+	// Change directory if path is provided
+	if u.Path != "" && u.Path != "/" {
+		if err := c.ChangeDir(u.Path); err != nil {
+			_ = c.Quit()
+			return nil, fmt.Errorf("failed to change directory: %w", err)
+		}
+	}
 
 	return c, nil
 }
@@ -556,4 +634,46 @@ func (c *Client) Hash(path string) (string, error) {
 func (c *Client) SetHashAlgo(algo string) error {
 	_, err := c.expect2xx("OPTS", "HASH", algo)
 	return err
+}
+
+// UploadFile manages the upload of a local file to the server.
+// It opens the local file and streams it to the remote location using Store.
+//
+// Example:
+//
+//	err := client.UploadFile("local_image.jpg", "/public/images/remote_image.jpg")
+func (c *Client) UploadFile(localPath, remotePath string) error {
+	f, err := os.Open(localPath)
+	if err != nil {
+		return fmt.Errorf("failed to open local file: %w", err)
+	}
+	defer f.Close()
+
+	if err := c.Store(remotePath, f); err != nil {
+		return fmt.Errorf("upload failed: %w", err)
+	}
+
+	return nil
+}
+
+// DownloadFile manages the download of a remote file to the local filesystem.
+// It creates or truncates the local file and streams the remote content into it using Retrieve.
+//
+// Example:
+//
+//	err := client.DownloadFile("/public/data.csv", "local_data.csv")
+func (c *Client) DownloadFile(remotePath, localPath string) error {
+	f, err := os.Create(localPath)
+	if err != nil {
+		return fmt.Errorf("failed to create local file: %w", err)
+	}
+	defer f.Close()
+
+	if err := c.Retrieve(remotePath, f); err != nil {
+		// Clean up the partial file on error
+		_ = os.Remove(localPath)
+		return fmt.Errorf("download failed: %w", err)
+	}
+
+	return nil
 }

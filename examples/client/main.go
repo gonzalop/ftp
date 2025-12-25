@@ -33,6 +33,9 @@ func main() {
 	fmt.Println("\n=== Example 5: Custom Listing Parser ===")
 	fmt.Println("(See the code)")
 	// customParserExample()
+
+	fmt.Println("\n=== Example 6: Ease of Use Helpers ===")
+	// easeOfUseExample()
 }
 
 func plainFTPExample() {
@@ -320,4 +323,29 @@ func (p *MyCustomParser) Parse(line string) (*ftp.Entry, bool) {
 	// Simple example parsing logic
 	// In reality, you would check if the line matches your custom format
 	return nil, false
+}
+
+func easeOfUseExample() {
+	// 1. One-liner connection (defaults to port 21, anonymous login if user omitted)
+	// Supports: ftp://, ftps:// (implicit), ftp+explicit://
+	client, err := ftp.Connect("ftp://ftp.gnu.org")
+	if err != nil {
+		log.Printf("Failed to connect: %v", err)
+		return
+	}
+	defer client.Quit()
+	fmt.Println("✓ Connected via URL")
+
+	// 2. Simple file download
+	// Downloads "README" from server to local "README.txt"
+	fmt.Println("Downloading README...")
+	if err := client.DownloadFile("README", "README.txt"); err != nil {
+		log.Printf("Download failed: %v", err)
+	} else {
+		fmt.Println("✓ Downloaded README to README.txt")
+		_ = os.Remove("README.txt") // Clean up
+	}
+
+	// 3. Simple file upload (requires write access)
+	// err = client.UploadFile("local_file.txt", "remote_file.txt")
 }
