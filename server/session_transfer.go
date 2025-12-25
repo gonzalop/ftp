@@ -56,7 +56,13 @@ func (s *session) handleRETR(path string) {
 
 	// Track transfer metrics
 	startTime := time.Now()
-	bytesTransferred, err := io.Copy(conn, file)
+
+	var src io.Reader = file
+	if s.transferType == "A" {
+		src = newASCIIReader(file)
+	}
+
+	bytesTransferred, err := io.Copy(conn, src)
 	if err != nil {
 		s.reply(426, "Connection closed; transfer aborted.")
 		return
@@ -134,7 +140,13 @@ func (s *session) handleSTOR(path string) {
 
 	// Track transfer metrics
 	startTime := time.Now()
-	bytesTransferred, err := io.Copy(file, conn)
+
+	var src io.Reader = conn
+	if s.transferType == "A" {
+		src = newASCIIWriter(conn)
+	}
+
+	bytesTransferred, err := io.Copy(file, src)
 	if err != nil {
 		s.reply(426, "Connection closed; transfer aborted.")
 		return
@@ -191,7 +203,12 @@ func (s *session) handleAPPE(path string) {
 
 	s.reply(150, "Opening data connection for APPE.")
 
-	if _, err := io.Copy(file, conn); err != nil {
+	var src io.Reader = conn
+	if s.transferType == "A" {
+		src = newASCIIWriter(conn)
+	}
+
+	if _, err := io.Copy(file, src); err != nil {
 		s.reply(426, "Connection closed; transfer aborted.")
 		return
 	}
@@ -224,7 +241,12 @@ func (s *session) handleSTOU() {
 
 	s.reply(150, fmt.Sprintf("FILE: %s", path))
 
-	if _, err := io.Copy(file, conn); err != nil {
+	var src io.Reader = conn
+	if s.transferType == "A" {
+		src = newASCIIWriter(conn)
+	}
+
+	if _, err := io.Copy(file, src); err != nil {
 		s.reply(426, "Connection closed; transfer aborted.")
 		return
 	}
@@ -240,8 +262,10 @@ func (s *session) handleTYPE(arg string) {
 	// Only support ASCII (A) and Binary (I). Fail if EBCDIC (E).
 	switch strings.ToUpper(arg) {
 	case "A", "A N":
+		s.transferType = "A"
 		s.reply(200, "Type set to A.")
 	case "I", "L 8":
+		s.transferType = "I"
 		s.reply(200, "Type set to I.")
 	default:
 		s.reply(504, "Type not supported.")

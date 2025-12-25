@@ -2,6 +2,8 @@ package server
 
 import (
 	"fmt"
+	"io"
+	"strings"
 )
 
 func (s *session) handlePWD() {
@@ -25,6 +27,27 @@ func (s *session) handleCWD(path string) {
 	if err := s.fs.ChangeDir(path); err != nil {
 		s.replyError(err)
 		return
+	}
+
+	// Check for .message file if enabled
+	if s.server.enableDirMessage {
+		f, err := s.fs.OpenFile(".message", 0)
+		if err == nil {
+			// Read up to 2KB to avoid excessive memory usage
+			lr := io.LimitReader(f, 2048)
+			b, _ := io.ReadAll(lr)
+			f.Close()
+			if len(b) > 0 {
+				fmt.Fprintf(s.writer, "250-Message:\r\n")
+				// Trim trailing newlines to avoid an extra empty line at the end
+				msg := strings.TrimRight(string(b), "\r\n")
+				lines := strings.Split(msg, "\n")
+				for _, line := range lines {
+					line = strings.TrimRight(line, "\r")
+					fmt.Fprintf(s.writer, "250-%s\r\n", line)
+				}
+			}
+		}
 	}
 	s.reply(250, "Directory successfully changed.")
 }

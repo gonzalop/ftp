@@ -242,6 +242,16 @@ func WithRedactIPs(enabled bool) Option {
 	}
 }
 
+// WithEnableDirMessage enables directory messages.
+// When enabled, the server will check for a .message file in the directory
+// upon entering it and display its content to the user.
+func WithEnableDirMessage(enabled bool) Option {
+	return func(s *Server) error {
+		s.enableDirMessage = enabled
+		return nil
+	}
+}
+
 // WithMetricsCollector sets an optional metrics collector for monitoring.
 // The collector will receive metrics about commands, transfers, connections,
 // and authentication attempts.

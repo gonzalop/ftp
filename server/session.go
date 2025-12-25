@@ -35,6 +35,7 @@ type session struct {
 	restartOffset int64  // For REST command
 	host          string // From HOST command
 	selectedHash  string // Default SHA-256
+	transferType  string // Transfer type (A=ASCII, I=Binary), default I
 
 	// Data connection state
 	dataConn   net.Conn
@@ -103,6 +104,7 @@ func newSession(server *Server, conn net.Conn) *session {
 		remoteIP:     remoteIP,
 		prot:         "C", // Default to clear
 		selectedHash: "SHA-256",
+		transferType: "I",
 	}
 
 	// Detect Implicit TLS (connection is already a *tls.Conn)

@@ -101,6 +101,9 @@ type Server struct {
 	pathRedactor PathRedactor // Custom path redaction function (optional)
 	redactIPs    bool         // Redact last octet of IP addresses in logs
 
+	// Features
+	enableDirMessage bool // Enable directory messages (.message files)
+
 	// Metrics collection (optional)
 	metricsCollector MetricsCollector
 
