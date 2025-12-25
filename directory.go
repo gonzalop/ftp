@@ -579,6 +579,13 @@ func (c *Client) ChangeDir(path string) error {
 	return err
 }
 
+// ChangeDirToParent changes the current working directory to the parent directory.
+// This implements the CDUP command.
+func (c *Client) ChangeDirToParent() error {
+	_, err := c.expect2xx("CDUP")
+	return err
+}
+
 // CurrentDir returns the current working directory.
 func (c *Client) CurrentDir() (string, error) {
 	resp, err := c.expect2xx("PWD")

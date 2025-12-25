@@ -24,6 +24,7 @@ A production-ready FTP client library for Go with comprehensive TLS support, pro
 - **Resume Support (REST)** - Resume interrupted transfers (RFC 3659)
 - **Machine-Readable Listings (MLST/MLSD)** - Structured directory listings (RFC 3659)
 - **Protocol Commands** - Support for `SYST` (System type) and `ABOR` (Abort transfer)
+- **Virtual Hosting (HOST)** - Support for virtual hosting (RFC 7151)
 - **Recursive Operations** - Walk, UploadDir, DownloadDir helpers
 
 ## RFC Compliance
@@ -36,6 +37,7 @@ This client implements the following RFCs:
 - **RFC 3659** (Extensions): `MLST/MLSD`, `SIZE`, `MDTM`, `REST`
 - **RFC 4217** (Securing FTP with TLS): `AUTH TLS`, `PBSZ`, `PROT`
 - **RFC 5797** (FTP Command Registry)
+- **RFC 7151** (HOST Command): Virtual hosting support
 
 📋 **[Detailed Compliance Matrix](client-compliance.md)** - Detailed tables of all FTP commands and their implementation status
 
@@ -98,6 +100,27 @@ func main() {
     for _, entry := range entries {
         log.Printf("%s (%s)\n", entry.Name, entry.Type)
     }
+}
+```
+
+### Virtual Hosting (HOST)
+
+For servers that support multiple domains (virtual hosts) on the same IP, use the `Host` command (RFC 7151) before logging in:
+
+```go
+client, err := ftp.Dial("ftp.example.com:21")
+if err != nil {
+    log.Fatal(err)
+}
+defer client.Quit()
+
+// Specify target virtual host
+if err := client.Host("ftp.example.com"); err != nil {
+    log.Fatal(err)
+}
+
+if err := client.Login("username", "password"); err != nil {
+    log.Fatal(err)
 }
 ```
 

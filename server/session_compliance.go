@@ -96,7 +96,7 @@ func (s *session) handleHELP(arg string) {
 	// List all supported commands using multi-line response
 	fmt.Fprintf(s.writer, "214-The following commands are supported:\r\n")
 	fmt.Fprintf(s.writer, " USER PASS QUIT ACCT\r\n")
-	fmt.Fprintf(s.writer, " CWD CDUP PWD MKD XMKD RMD XRMD\r\n")
+	fmt.Fprintf(s.writer, " CWD XCWD CDUP XCUP PWD XPWD MKD XMKD RMD XRMD\r\n")
 	fmt.Fprintf(s.writer, " LIST NLST MLSD MLST\r\n")
 	fmt.Fprintf(s.writer, " RETR STOR APPE STOU DELE\r\n")
 	fmt.Fprintf(s.writer, " RNFR RNTO REST\r\n")

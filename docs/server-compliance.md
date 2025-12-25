@@ -21,7 +21,7 @@ This server implements **comprehensive** FTP protocol support, focusing on moder
 - ✅ **SIZE** - File Size (RFC 3659)
 - ✅ **UTF8** - UTF-8 Support (RFC 2640)
 - ✅ **HOST** - Virtual Hosting (RFC 7151)
-- ✅ **HASH** - File Hashes
+- ✅ **HASH** - File Hashes (draft-bryan-ftp-hash)
 
 ## Detailed Command Matrix
 
@@ -65,6 +65,20 @@ This server implements **comprehensive** FTP protocol support, focusing on moder
 **Legend:**
 
 - **Implementation:** ✅ = Implemented, ❌ = Not implemented
+
+---
+
+### Historic Commands (RFC 1123)
+
+These commands are supported as aliases for modern equivalents for maximum compatibility with older clients.
+
+| Command | Description | Implementation | Alias for |
+|---------|-------------|----------------|-----------|
+| **XCWD** | Change Directory | ✅ Implemented | CWD |
+| **XCUP** | Change to Parent | ✅ Implemented | CDUP |
+| **XMKD** | Make Directory | ✅ Implemented | MKD |
+| **XPWD** | Print Directory | ✅ Implemented | PWD |
+| **XRMD** | Remove Directory | ✅ Implemented | RMD |
 
 ---
 
@@ -115,7 +129,6 @@ This server implements **comprehensive** FTP protocol support, focusing on moder
 | **HOST** | RFC 7151 | Virtual Hosting | ✅ Implemented | |
 | **MFMT** | Draft | Modify Time | ✅ Implemented | |
 | **HASH** | Draft | File Hash | ✅ Implemented | SHA-1, SHA-256, SHA-512, MD5, CRC32 |
-
 
 ---
 

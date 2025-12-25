@@ -362,7 +362,7 @@ func (s *session) handleCommand(line string) {
 		err = s.handleAccessCommand(cmd, arg)
 
 	// File Management
-	case "CWD", "CDUP", "UP", "PWD", "LIST", "NLST", "MKD", "XMKD", "RMD", "XRMD", "DELE", "RNFR", "RNTO":
+	case "CWD", "XCWD", "CDUP", "XCUP", "UP", "PWD", "XPWD", "LIST", "NLST", "MKD", "XMKD", "RMD", "XRMD", "DELE", "RNFR", "RNTO":
 		s.handleFileCommand(cmd, arg)
 
 	// File Transfer
@@ -422,11 +422,11 @@ func (s *session) handleAccessCommand(cmd, arg string) error {
 
 func (s *session) handleFileCommand(cmd, arg string) {
 	switch cmd {
-	case "CWD":
+	case "CWD", "XCWD":
 		s.handleCWD(arg)
-	case "CDUP", "UP":
+	case "CDUP", "XCUP", "UP":
 		s.handleCDUP()
-	case "PWD":
+	case "PWD", "XPWD":
 		s.handlePWD()
 	case "LIST":
 		s.handleLIST(arg)

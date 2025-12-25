@@ -17,6 +17,7 @@ This library implements **comprehensive support** for the following RFC 5797 FEA
 - ✅ **PROT** - Data Channel Protection Level
 - ✅ **REST** - Restart Transfer (RFC 3659)
 - ✅ **SIZE** - File Size (RFC 3659)
+- ✅ **HOST** - Virtual Hosting (RFC 7151)
 
 ## Detailed Command Matrix
 
@@ -56,11 +57,11 @@ This library implements **comprehensive support** for the following RFC 5797 FEA
 | STOU | Store Unique | ✅ `StoreUnique()` |
 | STRU | File Structure | ❌ File structure (default) only |
 | **SYST** | System | ✅ `Syst()` |
-| XCUP | {obsolete: use CDUP} | 🏛️ Historic - deprecated by RFC 1123 |
-| XCWD | {obsolete: use CWD} | 🏛️ Historic - deprecated by RFC 1123 |
-| XMKD | {obsolete: use MKD} | 🏛️ Historic - deprecated by RFC 1123 |
-| XPWD | {obsolete: use PWD} | 🏛️ Historic - deprecated by RFC 1123 |
-| XRMD | {obsolete: use RMD} | 🏛️ Historic - deprecated by RFC 1123 |
+| XCUP | {obsolete: use CDUP} | ✅🏛️ Historic - deprecated by RFC 1123 |
+| XCWD | {obsolete: use CWD} | ✅🏛️ Historic - deprecated by RFC 1123 |
+| XMKD | {obsolete: use MKD} | ✅🏛️ Historic - deprecated by RFC 1123 |
+| XPWD | {obsolete: use PWD} | ✅🏛️ Historic - deprecated by RFC 1123 |
+| XRMD | {obsolete: use RMD} | ✅🏛️ Historic - deprecated by RFC 1123 |
 
 **Legend:**
 
@@ -110,6 +111,14 @@ This library implements **comprehensive support** for the following RFC 5797 FEA
 | **MLST** | MLST | List Single Object | ✅ `MLStat()` | [mlst.go](mlst.go) |
 | **REST** | REST STREAM | Restart (for STREAM mode) | ✅ `RestartAt()`, `RetrieveFrom()` | [transfer.go](transfer.go) |
 | **SIZE** | SIZE | File Size | ✅ `Size()` | [directory.go](directory.go) |
+
+---
+
+### Virtual Hosting (RFC 7151)
+
+| Command | FEAT Code | Description | Implementation | File |
+|---------|-----------|-------------|----------------|------|
+| **HOST** | HOST | Virtual Hosting | ✅ `Host()` | [client.go](client.go) |
 
 ---
 
@@ -164,7 +173,7 @@ size, _ := client.Size("file.txt")
 // Machine-readable listing
 entries, _ := client.MLList("/pub")
 for _, entry := range entries {
-    fmt.Printf("%s: %d bytes, %s\n", 
+    fmt.Printf("%s: %d bytes, %s\n",
         entry.Name, entry.Size, entry.ModTime)
 }
 
@@ -185,3 +194,4 @@ client.RetrieveFrom("large.bin", file, info.Size())
 - [RFC 3659](https://datatracker.ietf.org/doc/html/rfc3659) - Extensions to FTP
 - [RFC 4217](https://datatracker.ietf.org/doc/html/rfc4217) - Securing FTP with TLS
 - [RFC 5797](https://datatracker.ietf.org/doc/html/rfc5797) - FTP Command and Extension Registry
+- [RFC 7151](https://datatracker.ietf.org/doc/html/rfc7151) - FTP HOST Command for Virtual Hosts

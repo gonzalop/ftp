@@ -50,6 +50,7 @@ func (s *session) handleFEAT() {
 		"PASV",
 		"EPSV",
 		"UTF8",
+		"TVFS",
 		"MLST type*;size*;modify*;",
 		"REST STREAM",
 		"HOST",
