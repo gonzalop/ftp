@@ -57,6 +57,10 @@ func (s *session) handleFEAT() {
 		"MFMT",
 	}
 
+	if !s.server.disableMLSD {
+		features = append(features, "MLSD")
+	}
+
 	if s.server.tlsConfig != nil {
 		features = append(features, "AUTH TLS", "PBSZ", "PROT")
 	}
@@ -95,6 +99,11 @@ func (s *session) handleOPTS(arg string) {
 }
 
 func (s *session) handleMLSD(arg string) {
+	if s.server.disableMLSD {
+		s.reply(502, "Command not implemented.")
+		return
+	}
+
 	if !s.isLoggedIn {
 		s.reply(530, "Not logged in.")
 		return

@@ -18,7 +18,7 @@ A flexible and modular FTP server implementation in Go. Embed an FTP server into
 - **RFC Compliance**: Implements key FTP RFCs for broad client compatibility
 - **TLS Support**: Both Explicit (AUTH TLS) and Implicit FTPS modes
 - **IPv6 Support**: Fully supports IPv6 via RFC 2428 (EPRT/EPSV)
-- **Modern Extensions**: Supports `SIZE`, `MDTM`, `MFMT`, `MLST/MLSD`, `SITE CHMOD`, `HASH` and more
+- **Modern Extensions**: Supports `SIZE`, `MDTM`, `MFMT`, `MLST/MLSD`, `STOU`, `SITE CHMOD`, `HASH` and more
 
 ## RFC Compliance
 
@@ -185,6 +185,7 @@ srv, err := server.NewServer(":21",
     server.WithDriver(driver),
     server.WithMaxIdleTime(10*time.Minute),
     server.WithMaxConnections(100),
+    server.WithDisableMLSD(true), // Optional: for compatibility testing
 )
 ```
 

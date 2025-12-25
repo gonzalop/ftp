@@ -119,6 +119,8 @@ type ClientContext interface {
 // but can be customized per-user if needed.
 type Settings struct {
 	// PublicHost is the hostname or IP address advertised in PASV responses.
+	// If set to a hostname, the server will resolve it once and use the first
+	// IPv4 address found.
 	// If empty, the server uses the control connection's local address.
 	// Required when behind NAT or in containerized environments.
 	PublicHost string

@@ -164,9 +164,9 @@ func (c *Client) List(path string) ([]*Entry, error) {
 	var err error
 
 	if path == "" {
-		dataConn, err = c.cmdDataConnFrom("LIST")
+		_, dataConn, err = c.cmdDataConnFrom("LIST")
 	} else {
-		dataConn, err = c.cmdDataConnFrom("LIST", path)
+		_, dataConn, err = c.cmdDataConnFrom("LIST", path)
 	}
 	if err != nil {
 		return nil, err
@@ -542,9 +542,9 @@ func (c *Client) NameList(path string) ([]string, error) {
 	var err error
 
 	if path == "" {
-		dataConn, err = c.cmdDataConnFrom("NLST")
+		_, dataConn, err = c.cmdDataConnFrom("NLST")
 	} else {
-		dataConn, err = c.cmdDataConnFrom("NLST", path)
+		_, dataConn, err = c.cmdDataConnFrom("NLST", path)
 	}
 	if err != nil {
 		return nil, err

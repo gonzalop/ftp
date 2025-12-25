@@ -408,13 +408,13 @@ func (c *Client) openPassiveDataConn() (net.Conn, error) {
 }
 
 // cmdDataConnFrom executes a command that requires a data connection.
-// It opens the data connection, sends the command, and returns the data connection.
+// It opens the data connection, sends the command, and returns the response and data connection.
 // The caller is responsible for closing the data connection and reading the final response.
-func (c *Client) cmdDataConnFrom(cmd string, args ...string) (net.Conn, error) {
+func (c *Client) cmdDataConnFrom(cmd string, args ...string) (*Response, net.Conn, error) {
 	// Open the data connection first
 	dataConn, err := c.openDataConn()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Mark transfer as in progress
@@ -425,7 +425,7 @@ func (c *Client) cmdDataConnFrom(cmd string, args ...string) (net.Conn, error) {
 	if err != nil {
 		dataConn.Close()
 		atomic.StoreInt32(&c.transferInProgress, 0)
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Check for preliminary success (1xx) or immediate success (2xx)
@@ -437,7 +437,7 @@ func (c *Client) cmdDataConnFrom(cmd string, args ...string) (net.Conn, error) {
 		if resp.Code < 100 || resp.Code >= 400 {
 			dataConn.Close()
 			atomic.StoreInt32(&c.transferInProgress, 0)
-			return nil, &ProtocolError{
+			return resp, nil, &ProtocolError{
 				Command:  cmd,
 				Response: resp.Message,
 				Code:     resp.Code,
@@ -445,7 +445,7 @@ func (c *Client) cmdDataConnFrom(cmd string, args ...string) (net.Conn, error) {
 		}
 	}
 
-	return dataConn, nil
+	return resp, dataConn, nil
 }
 
 // finishDataConn closes the data connection and reads the final response.

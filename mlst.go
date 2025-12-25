@@ -109,9 +109,9 @@ func (c *Client) MLList(path string) ([]*MLEntry, error) {
 	var err error
 
 	if path == "" {
-		dataConn, err = c.cmdDataConnFrom("MLSD")
+		_, dataConn, err = c.cmdDataConnFrom("MLSD")
 	} else {
-		dataConn, err = c.cmdDataConnFrom("MLSD", path)
+		_, dataConn, err = c.cmdDataConnFrom("MLSD", path)
 	}
 	if err != nil {
 		return nil, err

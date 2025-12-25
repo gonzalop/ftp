@@ -93,6 +93,7 @@ func main() {
 - **Automatic Keep-Alive** - Prevents timeouts during idle periods or long transfers
 - **Debug Logging** - Structured logging with `log/slog` for easier debugging
 - **Progress Tracking** - Built-in callbacks for upload/download progress
+- **File Operations** - Upload, download, append, store unique (STOU)
 - **Resume Transfers** - Resume interrupted downloads/uploads (REST)
 - **Modern Extensions** - MLST/MLSD, SIZE, MDTM, HASH support
 - **IPv6 Support** - Full IPv6 via EPSV/EPRT (RFC 2428)
