@@ -427,7 +427,13 @@ func TestServerMiscFeatures(t *testing.T) {
 			t.Errorf("Serve() execution error: %v", err)
 		}
 	}()
-	defer func() { _ = s.Shutdown(context.Background()) }()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.Shutdown(ctx); err != nil {
+			t.Errorf("Shutdown failed: %v", err)
+		}
+	}()
 
 	// Wait for server to start
 	addr := ln.Addr().String()
@@ -510,6 +516,7 @@ func TestServerMiscFeatures(t *testing.T) {
 
 		// Read all data from data connection
 		var buf bytes.Buffer
+		dataConn.SetReadDeadline(time.Now().Add(5 * time.Second))
 		_, err = buf.ReadFrom(dataConn)
 		dataConn.Close()
 		if err != nil {
@@ -591,6 +598,7 @@ type textConn struct {
 }
 
 func rawReadResponse(c *textConn) (int, string, error) {
+	c.SetReadDeadline(time.Now().Add(5 * time.Second))
 	buf := make([]byte, 1024)
 	n, err := c.Read(buf)
 	if err != nil {
