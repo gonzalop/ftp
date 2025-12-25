@@ -23,6 +23,7 @@ A production-ready FTP client library for Go with comprehensive TLS support, pro
 - **File Metadata (MDTM)** - Get file modification times (RFC 3659)
 - **Resume Support (REST)** - Resume interrupted transfers (RFC 3659)
 - **Machine-Readable Listings (MLST/MLSD)** - Structured directory listings (RFC 3659)
+- **Protocol Commands** - Support for `SYST` (System type) and `ABOR` (Abort transfer)
 - **Recursive Operations** - Walk, UploadDir, DownloadDir helpers
 
 ## RFC Compliance
@@ -233,6 +234,22 @@ fmt.Printf("SHA-256 Hash: %s\n", hash)
 ```go
 // Change file permissions (SITE CHMOD)
 err := client.Chmod("script.sh", 0755)
+```
+
+### System Information (SYST)
+
+```go
+// Get server system type
+sys, err := client.Syst()
+fmt.Printf("Remote system: %s\n", sys)
+```
+
+### Aborting Transfers (ABOR)
+
+```go
+// Abort an active transfer. This is typically called from a separate 
+// goroutine during a long-running Store or Retrieve operation.
+err := client.Abort()
 ```
 
 ### Raw Commands (Quote)

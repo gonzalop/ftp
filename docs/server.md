@@ -16,9 +16,13 @@ A flexible and modular FTP server implementation in Go. Embed an FTP server into
 - **Pluggable Drivers**: Abstract `Driver` interface allows backends for local filesystems, S3, memory, etc.
     - Built-in `FSDriver` uses [`os.Root`](https://pkg.go.dev/os#Root) for secure filesystem access
 - **RFC Compliance**: Implements key FTP RFCs for broad client compatibility
-- **TLS Support**: Both Explicit (AUTH TLS) and Implicit FTPS modes
-- **IPv6 Support**: Fully supports IPv6 via RFC 2428 (EPRT/EPSV)
-- **Modern Extensions**: Supports `SIZE`, `MDTM`, `MFMT`, `MLST/MLSD`, `STOU`, `SITE CHMOD`, `HASH` and more
+- **Explicit TLS (FTPS)** - Secure connections using AUTH TLS (recommended)
+- **Implicit TLS** - Legacy FTPS on port 990
+- **Asynchronous Transfers & ABOR** - Support for aborting transfers (RFC 959)
+- **Transfer Logging** - Support for standard `xferlog` format
+- **Directory Messages** - Custom banner messages for directory changes
+- **IPv6 Support** - Full support for IPv6 via RFC 2428 (EPRT/EPSV)
+- **Modern Extensions** - Supports `SIZE`, `MDTM`, `MFMT`, `MLST/MLSD`, `STOU`, `SITE CHMOD`, `HASH`, `LIST -R` (Recursive) and more
 
 ## RFC Compliance
 
@@ -103,6 +107,7 @@ func main() {
 By default, if no `Authenticator` is provided, `NewFSDriver` allows read-only anonymous access (using usernames `anonymous` or `ftp`).
 
 - Use `WithDisableAnonymous(true)` to prevent these default logins.
+- Use `WithAnonWrite(true)` to allow anonymous users to upload and modify files.
 - If you define a custom `Authenticator` via `WithAuthenticator`, the `DisableAnonymous` flag is ignored, as your custom function takes full responsibility for deciding which users (including anonymous ones) are permitted.
 
 ### FTPS Support
@@ -140,6 +145,30 @@ l, _ := net.Listen("tcp", ":990")
 tlsListener := tls.NewListener(l, tlsConfig)
 
 server.Serve(tlsListener)
+```
+
+### Transfer Logging (xferlog)
+
+The server can generate logs in the standard `xferlog` format, compatible with most FTP log analyzers.
+
+```go
+logFile, _ := os.OpenFile("/var/log/xferlog", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+srv, _ := server.NewServer(":21",
+    server.WithDriver(driver),
+    server.WithTransferLog(logFile),
+)
+```
+
+### File Creation Mask (Umask)
+
+You can control the default permissions for uploaded files using a `Umask`. This is configured via the `Settings` in the `FSDriver`.
+
+```go
+driver, _ := server.NewFSDriver("/var/ftp",
+    server.WithSettings(&server.Settings{
+        Umask: 0022, // Resulting files: 0644, Directories: 0755
+    }),
+)
 ```
 
 #### Client Authentication (mTLS)
