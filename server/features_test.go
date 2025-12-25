@@ -17,6 +17,7 @@ import (
 )
 
 func TestDirectoryMessage(t *testing.T) {
+	t.Parallel()
 	// 1. Setup
 	rootDir := t.TempDir()
 
@@ -190,6 +191,7 @@ func manualStore(t *testing.T, c *ftp.Client, path string, content []byte) error
 }
 
 func TestASCIIMode(t *testing.T) {
+	t.Parallel()
 	// 1. Setup
 	rootDir := t.TempDir()
 
@@ -293,6 +295,7 @@ func TestASCIIMode(t *testing.T) {
 }
 
 func TestABOR(t *testing.T) {
+	t.Parallel()
 	// 1. Setup
 	rootDir := t.TempDir()
 	// Create a large-ish file to have time to abort
@@ -378,6 +381,7 @@ func TestABOR(t *testing.T) {
 }
 
 func TestServerMiscFeatures(t *testing.T) {
+	t.Parallel()
 	// Setup temporary directory
 	rootDir := t.TempDir()
 

@@ -10,6 +10,7 @@ import (
 )
 
 func TestFSDriver_DisableAnonymous(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 
 	tests := []struct {
@@ -75,6 +76,7 @@ func TestFSDriver_DisableAnonymous(t *testing.T) {
 
 // TestNewFSDriver_Validation tests root path validation
 func TestNewFSDriver_Validation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		setupPath   func(t *testing.T) string
@@ -124,6 +126,7 @@ func TestNewFSDriver_Validation(t *testing.T) {
 
 // TestFSDriver_CustomAuthenticator tests custom authentication
 func TestFSDriver_CustomAuthenticator(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	userDir := filepath.Join(tempDir, "user1")
 	if err := os.MkdirAll(userDir, 0755); err != nil {
@@ -172,6 +175,7 @@ func TestFSDriver_CustomAuthenticator(t *testing.T) {
 
 // TestFSContext_PathSecurity tests directory traversal prevention
 func TestFSContext_PathSecurity(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	driver, err := NewFSDriver(tempDir)
 	if err != nil {
@@ -219,6 +223,7 @@ func TestFSContext_PathSecurity(t *testing.T) {
 
 // TestFSContext_FileOperations tests file operations
 func TestFSContext_FileOperations(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	driver, err := NewFSDriver(tempDir,
 		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
@@ -290,6 +295,7 @@ func TestFSContext_FileOperations(t *testing.T) {
 
 // TestFSContext_ReadOnly tests read-only mode enforcement
 func TestFSContext_ReadOnly(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	driver, err := NewFSDriver(tempDir,
 		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
@@ -326,6 +332,7 @@ func TestFSContext_ReadOnly(t *testing.T) {
 
 // TestFSContext_SetTime tests modification time setting
 func TestFSContext_SetTime(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	testFile := filepath.Join(tempDir, "test.txt")
 	if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
@@ -370,6 +377,7 @@ func TestFSContext_SetTime(t *testing.T) {
 
 // TestFSContext_Chmod tests mode changing
 func TestFSContext_Chmod(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	if runtime.GOOS == "windows" {
 		t.Skip("Chmod not fully supported on Windows")
@@ -424,6 +432,7 @@ func TestFSContext_Chmod(t *testing.T) {
 
 // TestFSContext_GetHash tests hash calculation
 func TestFSContext_GetHash(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	testFile := filepath.Join(tempDir, "test.txt")
 	if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {

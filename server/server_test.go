@@ -15,6 +15,7 @@ import (
 // TestServerIntegration performs a full end-to-end test of the server
 // using the local ftp client package.
 func TestServerIntegration(t *testing.T) {
+	t.Parallel()
 	// 1. Setup temporary directory for server root
 	rootDir := t.TempDir()
 
@@ -147,6 +148,7 @@ func TestServerIntegration(t *testing.T) {
 }
 
 func TestServer_ActiveMode(t *testing.T) {
+	t.Parallel()
 	rootDir := t.TempDir()
 	err := os.WriteFile(filepath.Join(rootDir, "active.txt"), []byte("active mode content"), 0644)
 	if err != nil {
@@ -195,6 +197,7 @@ func TestServer_ActiveMode(t *testing.T) {
 }
 
 func TestServer_Restart(t *testing.T) {
+	t.Parallel()
 	rootDir := t.TempDir()
 	content := "0123456789"
 	err := os.WriteFile(filepath.Join(rootDir, "resume.txt"), []byte(content), 0644)

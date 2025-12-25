@@ -13,6 +13,7 @@ import (
 
 // TestAdminCommands performs integration tests for MKD, RMD, DELE, APPE.
 func TestAdminCommands(t *testing.T) {
+	t.Parallel()
 	// 1. Setup temporary directory for server root
 	rootDir := t.TempDir()
 
@@ -110,6 +111,7 @@ func TestAdminCommands(t *testing.T) {
 }
 
 func TestReadOnlyCommands(t *testing.T) {
+	t.Parallel()
 	rootDir := t.TempDir()
 
 	driver, err := NewFSDriver(rootDir,

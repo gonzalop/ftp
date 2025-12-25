@@ -13,6 +13,7 @@ import (
 
 // TestServer_Shutdown verifies that Shutdown stops the server and closes connections.
 func TestServer_Shutdown(t *testing.T) {
+	t.Parallel()
 	// 1. Setup
 	rootDir := t.TempDir()
 	driver, err := NewFSDriver(rootDir,
@@ -137,6 +138,7 @@ func (d *BlockingDriver) Authenticate(user, pass, host string) (ClientContext, e
 }
 
 func TestServer_Shutdown_DataConn(t *testing.T) {
+	t.Parallel()
 	// 1. Setup
 	rootDir := t.TempDir()
 	baseDriver, err := NewFSDriver(rootDir,

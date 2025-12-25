@@ -10,6 +10,7 @@ import (
 )
 
 func TestMaxConnections(t *testing.T) {
+	t.Parallel()
 	// 1. Setup
 	rootDir := t.TempDir()
 	driver, err := NewFSDriver(rootDir, WithAuthenticator(func(u, p, h string) (string, bool, error) {
@@ -93,6 +94,7 @@ func TestMaxConnections(t *testing.T) {
 }
 
 func TestMaxConnectionsPerIP(t *testing.T) {
+	t.Parallel()
 	// 1. Setup
 	rootDir := t.TempDir()
 	driver, err := NewFSDriver(rootDir, WithAuthenticator(func(u, p, h string) (string, bool, error) {
