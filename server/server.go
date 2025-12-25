@@ -239,7 +239,8 @@ func (s *Server) ListenAndServe() error {
 // then waits for active connections to finish or until the context is cancelled.
 //
 // If the context expires before all connections close, remaining connections
-// are forcibly closed.
+// are forcibly closed. Forcibly closing a connection will also cause any
+// active data transfer for that session to be aborted.
 //
 // Example with timeout:
 //

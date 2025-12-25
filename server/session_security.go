@@ -21,9 +21,12 @@ func (s *session) handleAUTH(arg string) {
 
 	// Upgrade connection
 	tlsConn := tls.Server(s.conn, s.server.tlsConfig)
+
+	s.mu.Lock()
 	s.conn = tlsConn
 	s.reader = bufio.NewReader(tlsConn)
 	s.writer = bufio.NewWriter(tlsConn)
+	s.mu.Unlock()
 }
 
 func (s *session) handlePROT(arg string) {

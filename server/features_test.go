@@ -290,3 +290,88 @@ func TestASCIIMode(t *testing.T) {
 		t.Errorf("ASCII Upload mismatch.\nGot on disk: %q\nWant: %q", string(diskContent), expectedLF)
 	}
 }
+
+func TestABOR(t *testing.T) {
+	// 1. Setup
+	rootDir := t.TempDir()
+	// Create a large-ish file to have time to abort
+	largeFile := "large.bin"
+	// 1MB of zeros
+	if err := os.WriteFile(filepath.Join(rootDir, largeFile), make([]byte, 1024*1024), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	driver, _ := NewFSDriver(rootDir,
+		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+			return rootDir, false, nil
+		}),
+	)
+	server, _ := NewServer(":0", WithDriver(driver))
+	ln, _ := net.Listen("tcp", ":0")
+	addr := ln.Addr().String()
+	go func() { _ = server.Serve(ln) }()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = server.Shutdown(ctx)
+	}()
+
+	c, err := ftp.Dial(addr, ftp.WithTimeout(5*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Quit() }()
+	_ = c.Login("test", "test")
+
+	// 2. Start RETR manually to avoid blocking client
+	// We use PASV and Dial
+	resp, _ := c.Quote("PASV")
+	start := strings.Index(resp.Message, "(")
+	end := strings.LastIndex(resp.Message, ")")
+	parts := strings.Split(resp.Message[start+1:end], ",")
+	p1, _ := strconv.Atoi(parts[4])
+	p2, _ := strconv.Atoi(parts[5])
+	dataAddr := fmt.Sprintf("127.0.0.1:%d", p1*256+p2)
+
+	dataConn, err := net.Dial("tcp", dataAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dataConn.Close()
+
+	// Send RETR
+	_, err = c.Quote("RETR " + largeFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 3. Wait a tiny bit and send ABOR
+	time.Sleep(50 * time.Millisecond)
+
+	aborResp, err := c.Quote("ABOR")
+	if err != nil {
+		t.Fatalf("ABOR failed: %v", err)
+	}
+
+	// ABOR response should be 226 (or 225)
+	if aborResp.Code != 226 && aborResp.Code != 225 {
+		t.Errorf("Expected 226/225 for ABOR, got %d %s", aborResp.Code, aborResp.Message)
+	}
+
+	// Data connection should be closed by server
+	// Try to read - should get EOF or error quickly
+	buf := make([]byte, 1024)
+	_ = dataConn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+	n, err := dataConn.Read(buf)
+	if err == nil && n > 0 {
+		// We might read some buffered data, that's fine.
+		// But eventually it should close.
+		for err == nil {
+			_, err = dataConn.Read(buf)
+		}
+	}
+
+	if err == nil {
+		t.Error("Expected data connection to be closed after ABOR")
+	}
+}

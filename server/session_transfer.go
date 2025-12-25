@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -10,6 +11,25 @@ import (
 	"sync/atomic"
 	"time"
 )
+
+func (s *session) startTransfer() context.Context {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.busy = true
+	s.transferCtx, s.transferCancel = context.WithCancel(context.Background())
+	return s.transferCtx
+}
+
+func (s *session) endTransfer() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.busy = false
+	if s.transferCancel != nil {
+		s.transferCancel()
+	}
+	s.transferCtx = nil
+	s.transferCancel = nil
+}
 
 func (s *session) handleRETR(path string) {
 	if !s.isLoggedIn {
@@ -22,16 +42,17 @@ func (s *session) handleRETR(path string) {
 		s.replyError(err)
 		return
 	}
-	defer file.Close()
 
 	if s.restartOffset > 0 {
 		if seeker, ok := file.(io.Seeker); ok {
 			_, err := seeker.Seek(s.restartOffset, io.SeekStart)
 			if err != nil {
+				file.Close()
 				s.replyError(err)
 				return
 			}
 		} else {
+			file.Close()
 			s.reply(550, "Resume not supported for this file.")
 			s.restartOffset = 0
 			return
@@ -40,10 +61,11 @@ func (s *session) handleRETR(path string) {
 
 	conn, err := s.connData()
 	if err != nil {
+		file.Close()
 		s.reply(425, "Can't open data connection.")
 		return
 	}
-	defer conn.Close()
+	s.dataConn = conn // Store for ABOR
 
 	if s.restartOffset > 0 {
 		s.reply(150, fmt.Sprintf("Opening data connection for RETR (restarting at %d).", s.restartOffset))
@@ -52,50 +74,68 @@ func (s *session) handleRETR(path string) {
 	}
 
 	// Reset offset after use
+	offset := s.restartOffset
 	s.restartOffset = 0
 
-	// Track transfer metrics
-	startTime := time.Now()
+	ctx := s.startTransfer()
 
-	var src io.Reader = file
-	if s.transferType == "A" {
-		src = newASCIIReader(file)
-	}
+	go func() {
+		defer s.endTransfer()
+		defer file.Close()
+		defer conn.Close()
 
-	bytesTransferred, err := io.Copy(conn, src)
-	if err != nil {
-		s.reply(426, "Connection closed; transfer aborted.")
-		return
-	}
-	duration := time.Since(startTime)
+		var src io.Reader = file
+		if s.transferType == "A" {
+			src = newASCIIReader(file)
+		}
 
-	// Calculate throughput in MB/s
-	throughputMBps := float64(0)
-	if duration.Seconds() > 0 {
-		throughputMBps = float64(bytesTransferred) / duration.Seconds() / 1024 / 1024
-	}
+		// Track transfer metrics
+		startTime := time.Now()
+		bytesTransferred, err := io.Copy(conn, src)
 
-	// Transfer logging
-	s.server.logger.Info("transfer_complete",
-		"session_id", s.sessionID,
-		"remote_ip", s.redactIP(s.remoteIP),
-		"user", s.user,
-		"host", s.host,
-		"operation", "RETR",
-		"path", s.redactPath(path),
-		"bytes", bytesTransferred,
-		"duration_ms", duration.Milliseconds(),
-		"throughput_mbps", fmt.Sprintf("%.2f", throughputMBps),
-	)
+		// Check for cancellation
+		select {
+		case <-ctx.Done():
+			s.reply(426, "Transfer aborted.")
+			return
+		default:
+		}
 
-	// Metrics collection
-	if s.server.metricsCollector != nil {
-		s.server.metricsCollector.RecordTransfer("RETR", bytesTransferred, duration)
-	}
+		if err != nil {
+			s.reply(426, "Connection closed; transfer aborted.")
+			return
+		}
+		duration := time.Since(startTime)
 
-	s.reply(226, "Transfer complete.")
+		// Calculate throughput in MB/s
+		throughputMBps := float64(0)
+		if duration.Seconds() > 0 {
+			throughputMBps = float64(bytesTransferred) / duration.Seconds() / 1024 / 1024
+		}
+
+		// Transfer logging
+		s.server.logger.Info("transfer_complete",
+			"session_id", s.sessionID,
+			"remote_ip", s.redactIP(s.remoteIP),
+			"user", s.user,
+			"host", s.host,
+			"operation", "RETR",
+			"path", s.redactPath(path),
+			"bytes", bytesTransferred,
+			"duration_ms", duration.Milliseconds(),
+			"throughput_mbps", fmt.Sprintf("%.2f", throughputMBps),
+			"offset", offset,
+		)
+
+		// Metrics collection
+		if s.server.metricsCollector != nil {
+			s.server.metricsCollector.RecordTransfer("RETR", bytesTransferred, duration)
+		}
+
+		s.endTransfer()
+		s.reply(226, "Transfer complete.")
+	}()
 }
-
 func (s *session) handleSTOR(path string) {
 	if !s.isLoggedIn {
 		s.reply(530, "Not logged in.")
@@ -113,16 +153,17 @@ func (s *session) handleSTOR(path string) {
 		s.replyError(err)
 		return
 	}
-	defer file.Close()
 
 	if s.restartOffset > 0 {
 		if seeker, ok := file.(io.Seeker); ok {
 			_, err := seeker.Seek(s.restartOffset, io.SeekStart)
 			if err != nil {
+				file.Close()
 				s.replyError(err)
 				return
 			}
 		} else {
+			file.Close()
 			s.reply(550, "Resume not supported for this file.")
 			s.restartOffset = 0
 			return
@@ -131,56 +172,75 @@ func (s *session) handleSTOR(path string) {
 
 	conn, err := s.connData()
 	if err != nil {
+		file.Close()
 		s.reply(425, "Can't open data connection.")
 		return
 	}
-	defer conn.Close()
+	s.dataConn = conn
 
 	s.reply(150, "Opening data connection for STOR.")
 
-	// Track transfer metrics
-	startTime := time.Now()
-
-	var src io.Reader = conn
-	if s.transferType == "A" {
-		src = newASCIIWriter(conn)
-	}
-
-	bytesTransferred, err := io.Copy(file, src)
-	if err != nil {
-		s.reply(426, "Connection closed; transfer aborted.")
-		return
-	}
-	duration := time.Since(startTime)
-
-	// Calculate throughput in MB/s
-	throughputMBps := float64(0)
-	if duration.Seconds() > 0 {
-		throughputMBps = float64(bytesTransferred) / duration.Seconds() / 1024 / 1024
-	}
-
-	// Transfer logging
-	s.server.logger.Info("transfer_complete",
-		"session_id", s.sessionID,
-		"remote_ip", s.redactIP(s.remoteIP),
-		"user", s.user,
-		"host", s.host,
-		"operation", "STOR",
-		"path", s.redactPath(path),
-		"bytes", bytesTransferred,
-		"duration_ms", duration.Milliseconds(),
-		"throughput_mbps", fmt.Sprintf("%.2f", throughputMBps),
-	)
-
-	// Metrics collection
-	if s.server.metricsCollector != nil {
-		s.server.metricsCollector.RecordTransfer("STOR", bytesTransferred, duration)
-	}
-
+	// Reset offset after use
 	s.restartOffset = 0
-	s.reply(226, "Transfer complete.")
-}
 
+	ctx := s.startTransfer()
+
+	go func() {
+		defer s.endTransfer()
+		defer file.Close()
+		defer conn.Close()
+
+		// Track transfer metrics
+		startTime := time.Now()
+
+		var src io.Reader = conn
+		if s.transferType == "A" {
+			src = newASCIIWriter(conn)
+		}
+
+		bytesTransferred, err := io.Copy(file, src)
+
+		select {
+		case <-ctx.Done():
+			s.reply(426, "Transfer aborted.")
+			return
+		default:
+		}
+
+		if err != nil {
+			s.reply(426, "Connection closed; transfer aborted.")
+			return
+		}
+		duration := time.Since(startTime)
+
+		// Calculate throughput in MB/s
+		throughputMBps := float64(0)
+		if duration.Seconds() > 0 {
+			throughputMBps = float64(bytesTransferred) / duration.Seconds() / 1024 / 1024
+		}
+
+		// Transfer logging
+		s.server.logger.Info("transfer_complete",
+			"session_id", s.sessionID,
+			"remote_ip", s.redactIP(s.remoteIP),
+			"user", s.user,
+			"host", s.host,
+			"operation", "STOR",
+			"path", s.redactPath(path),
+			"bytes", bytesTransferred,
+			"duration_ms", duration.Milliseconds(),
+			"throughput_mbps", fmt.Sprintf("%.2f", throughputMBps),
+		)
+
+		// Metrics collection
+		if s.server.metricsCollector != nil {
+			s.server.metricsCollector.RecordTransfer("STOR", bytesTransferred, duration)
+		}
+
+		s.endTransfer()
+		s.reply(226, "Transfer complete.")
+	}()
+}
 func (s *session) handleAPPE(path string) {
 	if !s.isLoggedIn {
 		s.reply(530, "Not logged in.")
@@ -192,28 +252,42 @@ func (s *session) handleAPPE(path string) {
 		s.replyError(err)
 		return
 	}
-	defer file.Close()
 
 	conn, err := s.connData()
 	if err != nil {
+		file.Close()
 		s.reply(425, "Can't open data connection.")
 		return
 	}
-	defer conn.Close()
+	s.dataConn = conn
 
 	s.reply(150, "Opening data connection for APPE.")
 
-	var src io.Reader = conn
-	if s.transferType == "A" {
-		src = newASCIIWriter(conn)
-	}
+	ctx := s.startTransfer()
 
-	if _, err := io.Copy(file, src); err != nil {
-		s.reply(426, "Connection closed; transfer aborted.")
-		return
-	}
+	go func() {
+		defer s.endTransfer()
+		defer file.Close()
+		defer conn.Close()
 
-	s.reply(226, "Transfer complete.")
+		var src io.Reader = conn
+		if s.transferType == "A" {
+			src = newASCIIWriter(conn)
+		}
+
+		if _, err := io.Copy(file, src); err != nil {
+			select {
+			case <-ctx.Done():
+				s.reply(426, "Transfer aborted.")
+			default:
+				s.reply(426, "Connection closed; transfer aborted.")
+			}
+			return
+		}
+
+		s.endTransfer()
+		s.reply(226, "Transfer complete.")
+	}()
 }
 
 func (s *session) handleSTOU() {
@@ -230,28 +304,42 @@ func (s *session) handleSTOU() {
 		s.replyError(err)
 		return
 	}
-	defer file.Close()
 
 	conn, err := s.connData()
 	if err != nil {
+		file.Close()
 		s.reply(425, "Can't open data connection.")
 		return
 	}
-	defer conn.Close()
+	s.dataConn = conn
 
 	s.reply(150, fmt.Sprintf("FILE: %s", path))
 
-	var src io.Reader = conn
-	if s.transferType == "A" {
-		src = newASCIIWriter(conn)
-	}
+	ctx := s.startTransfer()
 
-	if _, err := io.Copy(file, src); err != nil {
-		s.reply(426, "Connection closed; transfer aborted.")
-		return
-	}
+	go func() {
+		defer s.endTransfer()
+		defer file.Close()
+		defer conn.Close()
 
-	s.reply(226, "Transfer complete.")
+		var src io.Reader = conn
+		if s.transferType == "A" {
+			src = newASCIIWriter(conn)
+		}
+
+		if _, err := io.Copy(file, src); err != nil {
+			select {
+			case <-ctx.Done():
+				s.reply(426, "Transfer aborted.")
+			default:
+				s.reply(426, "Connection closed; transfer aborted.")
+			}
+			return
+		}
+
+		s.endTransfer()
+		s.reply(226, "Transfer complete.")
+	}()
 }
 
 func (s *session) handleTYPE(arg string) {

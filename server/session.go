@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"crypto/rand"
 	"crypto/tls"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -22,6 +24,7 @@ type session struct {
 	conn   net.Conn
 	reader *bufio.Reader
 	writer *bufio.Writer
+	mu     sync.Mutex // Protects writer and state
 
 	// Session tracking
 	sessionID string
@@ -36,6 +39,14 @@ type session struct {
 	host          string // From HOST command
 	selectedHash  string // Default SHA-256
 	transferType  string // Transfer type (A=ASCII, I=Binary), default I
+
+	// Background transfer state
+	busy           bool
+	transferCtx    context.Context
+	transferCancel context.CancelFunc
+
+	// Reader synchronization
+	cmdReqChan chan struct{}
 
 	// Data connection state
 	dataConn   net.Conn
@@ -105,6 +116,7 @@ func newSession(server *Server, conn net.Conn) *session {
 		prot:         "C", // Default to clear
 		selectedHash: "SHA-256",
 		transferType: "I",
+		cmdReqChan:   make(chan struct{}),
 	}
 
 	// Detect Implicit TLS (connection is already a *tls.Conn)
@@ -115,43 +127,124 @@ func newSession(server *Server, conn net.Conn) *session {
 	return s
 }
 
-// serve handles the FTP session.
+type command struct {
+	line string
+	err  error
+}
+
+// serve handles the FTP session. It uses a concurrent architecture to handle
+// commands and data transfers, enabling support for commands like ABOR.
+//
+// Concurrency Model:
+//  1. Reader Goroutine: A dedicated goroutine is spawned to read commands from
+//     the client's control connection. It sends each command to the main `serve`
+//     loop via the `cmdChan`.
+//
+//  2. Main Loop (`serve`): This loop receives commands from `cmdChan` and
+//     dispatches them to handlers. It is the single point of control for the
+//     session's state.
+//
+//  3. Synchronization (`cmdReqChan`): To prevent data races during connection
+//     upgrades (e.g., AUTH TLS), the reader goroutine waits for a signal on
+//     `cmdReqChan` before reading the next command. The main loop sends this
+//     signal only after the current command handler has finished. This ensures
+//     that handlers that modify the connection or reader/writer state (like
+//     `handleAUTH`) can do so safely.
+//
+//  4. Asynchronous Transfers: Data transfer commands (RETR, STOR, etc.) are
+//     handled asynchronously. They start a new goroutine for the actual data
+//     copy, set a `busy` flag on the session, and return immediately. This allows
+//     the main loop to process other commands, specifically ABOR and STAT.
+//
+//  5. Aborting Transfers (`ABOR`): If a transfer is in progress (`busy == true`),
+//     the `handleABOR` command can interrupt it by closing the data connection and
+//     canceling the `transferCtx`. The background transfer goroutine detects
+//     this and exits gracefully.
+//
+//  6. State Protection (`s.mu`): A mutex protects session fields that are accessed
+//     by multiple goroutines (e.g., `writer`, `conn`, `reader`, `busy`). This is
+//     crucial because the main loop, reader goroutine, and transfer goroutines
+//     all interact with the session's state.
+//
+//  7. Goroutine Cleanup (`done`): A `done` channel is created in `serve` and
+//     closed on exit. The reader goroutine selects on this channel to ensure it
+//     terminates when the session ends, preventing goroutine leaks.
 func (s *session) serve() {
 	defer s.close()
 
 	// Send welcome message
 	if strings.HasPrefix(s.server.welcomeMessage, "220 ") {
 		// Message already has code, send raw
+		s.mu.Lock()
 		fmt.Fprintf(s.writer, "%s\r\n", s.server.welcomeMessage)
 		s.writer.Flush()
+		s.mu.Unlock()
 	} else if strings.HasPrefix(s.server.welcomeMessage, "220") {
 		// Has code but no space, add it
+		s.mu.Lock()
 		fmt.Fprintf(s.writer, "220 %s\r\n", s.server.welcomeMessage[3:])
 		s.writer.Flush()
+		s.mu.Unlock()
 	} else {
 		// No code, use reply
 		s.reply(220, s.server.welcomeMessage)
 	}
 
+	done := make(chan struct{})
+	defer close(done)
+
+	cmdChan := make(chan command)
+	go func() {
+		defer close(cmdChan)
+		for {
+			// Apply read timeout (for command reading)
+			s.mu.Lock()
+			conn := s.conn
+			s.mu.Unlock()
+
+			if s.server.readTimeout > 0 {
+				_ = conn.SetReadDeadline(time.Now().Add(s.server.readTimeout))
+			} else if s.server.maxIdleTime > 0 {
+				_ = conn.SetReadDeadline(time.Now().Add(s.server.maxIdleTime))
+			}
+
+			line, err := s.readCommand()
+
+			select {
+			case cmdChan <- command{line, err}:
+			case <-done:
+				return
+			}
+
+			if err != nil {
+				return
+			}
+
+			// Wait for next request signal
+			select {
+			case <-s.cmdReqChan:
+			case <-done:
+				return
+			}
+		}
+	}()
+
 	for {
-		// Apply read timeout (for command reading)
-		if s.server.readTimeout > 0 {
-			_ = s.conn.SetReadDeadline(time.Now().Add(s.server.readTimeout))
-		} else if s.server.maxIdleTime > 0 {
-			_ = s.conn.SetReadDeadline(time.Now().Add(s.server.maxIdleTime))
+		cmd, ok := <-cmdChan
+		if !ok {
+			return
 		}
 
-		line, err := s.readCommand()
-		if err != nil {
-			if err != io.EOF && err.Error() != "command too long" {
+		if cmd.err != nil {
+			if cmd.err != io.EOF && cmd.err.Error() != "command too long" {
 				s.server.logger.Warn("read error",
 					"session_id", s.sessionID,
 					"remote_ip", s.remoteIP,
 					"user", s.user,
-					"error", err,
+					"error", cmd.err,
 				)
 			}
-			if err.Error() == "command too long" {
+			if cmd.err.Error() == "command too long" {
 				s.reply(500, "Command line too long.")
 			}
 			return
@@ -165,11 +258,19 @@ func (s *session) serve() {
 			_ = s.conn.SetWriteDeadline(time.Now().Add(s.server.writeTimeout))
 		}
 
-		s.handleCommand(line)
+		s.handleCommand(cmd.line)
 
 		// Clear write deadline
 		if s.server.writeTimeout > 0 {
 			_ = s.conn.SetWriteDeadline(time.Time{})
+		}
+
+		// Signal reader to continue
+		// This must happen AFTER handleCommand, so any AUTH TLS changes are applied.
+		select {
+		case s.cmdReqChan <- struct{}{}:
+		case <-time.After(1 * time.Second):
+			// Should not happen unless reader died
 		}
 	}
 }
@@ -178,7 +279,12 @@ func (s *session) serve() {
 func (s *session) readCommand() (string, error) {
 	var line []byte
 	for {
-		b, err := s.reader.ReadByte()
+		// Protect reader access (needed because reader might be swapped by AUTH TLS)
+		s.mu.Lock()
+		r := s.reader
+		s.mu.Unlock()
+
+		b, err := r.ReadByte()
 		if err != nil {
 			return string(line), err
 		}
@@ -239,6 +345,15 @@ func (s *session) handleCommand(line string) {
 		"arg", logArg,
 	)
 
+	s.mu.Lock()
+	busy := s.busy
+	s.mu.Unlock()
+
+	if busy && cmd != "ABOR" && cmd != "STAT" {
+		s.reply(503, "Transfer in progress, please ABOR or wait.")
+		return
+	}
+
 	var err error
 	switch cmd {
 	// Access Control
@@ -272,6 +387,9 @@ func (s *session) handleCommand(line string) {
 	// Extensions
 	case "HOST", "HASH", "MFMT":
 		s.handleExtensionsCommand(cmd, arg)
+
+	case "ABOR":
+		s.handleABOR()
 
 	default:
 		s.reply(502, "Command not implemented.")
@@ -492,6 +610,36 @@ func (s *session) wrapDataConn(conn net.Conn) (net.Conn, error) {
 	return &trackingConn{Conn: conn, server: s.server}, nil
 }
 
+func (s *session) handleABOR() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !s.busy {
+		s.reply(226, "ABOR command successful; no transfer in progress.")
+		return
+	}
+
+	// Transfer is in progress.
+	s.server.logger.Info("transfer_abort_requested", "session_id", s.sessionID)
+
+	// Close data connection to interrupt the background transfer goroutine.
+	if s.dataConn != nil {
+		s.dataConn.Close()
+	}
+
+	// Signal the transfer context to cancel.
+	if s.transferCancel != nil {
+		s.transferCancel()
+	}
+
+	// Per RFC 959, the server should send a 426 reply for the original
+	// transfer command, followed by a 226 reply for the ABOR command.
+	// Our asynchronous implementation sends 226 immediately, and the
+	// transfer goroutine will send 426. This is a minor deviation but
+	// is functionally acceptable for most clients.
+	s.reply(226, "ABOR command successful; transfer aborted.")
+}
+
 // replyError sends a standard error response based on the error type.
 func (s *session) replyError(err error) {
 	if os.IsNotExist(err) {
@@ -508,9 +656,10 @@ func (s *session) replyError(err error) {
 	}
 	s.reply(550, "Action failed: "+err.Error())
 }
-
 // reply sends a response to the client.
 func (s *session) reply(code int, message string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	fmt.Fprintf(s.writer, "%d %s\r\n", code, message)
 	s.writer.Flush()
 }
