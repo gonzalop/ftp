@@ -471,7 +471,7 @@ func (c *fsContext) OpenFile(path string, flag int) (io.ReadWriteCloser, error) 
 	}
 
 	// Calculate mode with umask
-	mode := os.FileMode(0644)
+	var mode os.FileMode
 	settings := c.GetSettings()
 	if settings != nil && settings.Umask > 0 {
 		mode = os.FileMode(0666 &^ settings.Umask)

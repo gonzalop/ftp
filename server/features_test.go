@@ -516,7 +516,9 @@ func TestServerMiscFeatures(t *testing.T) {
 
 		// Read all data from data connection
 		var buf bytes.Buffer
-		dataConn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		if err := dataConn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+			t.Fatal(err)
+		}
 		_, err = buf.ReadFrom(dataConn)
 		dataConn.Close()
 		if err != nil {
@@ -666,7 +668,9 @@ type textConn struct {
 }
 
 func rawReadResponse(c *textConn) (int, string, error) {
-	c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if err := c.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return 0, "", err
+	}
 	buf := make([]byte, 1024)
 	n, err := c.Read(buf)
 	if err != nil {
