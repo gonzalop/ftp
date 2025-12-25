@@ -332,7 +332,12 @@ func (c *fsContext) MakeDir(path string) error {
 	if err != nil {
 		return err
 	}
-	return c.rootHandle.Mkdir(rel, 0755)
+	settings := c.GetSettings()
+	mode := os.FileMode(0755)
+	if settings != nil && settings.Umask > 0 {
+		mode = os.FileMode(0777 &^ settings.Umask)
+	}
+	return c.rootHandle.Mkdir(rel, mode)
 }
 
 // RemoveDir removes a directory and its contents.
@@ -465,8 +470,22 @@ func (c *fsContext) OpenFile(path string, flag int) (io.ReadWriteCloser, error) 
 		return nil, err
 	}
 
+	// Calculate mode with umask
+	mode := os.FileMode(0644)
+	settings := c.GetSettings()
+	if settings != nil && settings.Umask > 0 {
+		mode = os.FileMode(0666 &^ settings.Umask)
+	} else {
+		// Default to strict 0644 if no umask provided?
+		// Standard vsftpd local_umask default is 077 -> 0600.
+		// If settings.Umask is 0 (not set), we might stick to 0644 for backward compatibility.
+		// Or we could treat 0 as "no umask" -> 0666.
+		// Given current code used 0644 hardcoded, keeping 0644 as fallback default is safer for now.
+		mode = 0644
+	}
+
 	// os.Root.OpenFile(name, flag, perm)
-	return c.rootHandle.OpenFile(rel, flag, 0644)
+	return c.rootHandle.OpenFile(rel, flag, mode)
 }
 
 // GetFileInfo returns status information for a file or directory.

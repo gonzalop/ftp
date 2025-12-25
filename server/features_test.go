@@ -538,6 +538,74 @@ func TestServerMiscFeatures(t *testing.T) {
 			t.Errorf("Recursive listing missing subdir file")
 		}
 	}
+	/* TEST 3: Umask (local_umask) */
+	{
+		// 1. Create a separate server/driver with Umask
+		rootDirUmask := t.TempDir()
+		driverUmask, err := NewFSDriver(rootDirUmask, WithAnonWrite(true), WithSettings(&Settings{
+			Umask: 0077, // Private
+		}))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var logBuf bytes.Buffer
+		sUmask, err := NewServer(":0", WithDriver(driverUmask), WithTransferLog(&logBuf))
+		if err != nil {
+			t.Fatal(err)
+		}
+		lnUmask, err := net.Listen("tcp", ":0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		go func() {
+			_ = sUmask.Serve(lnUmask)
+		}()
+		defer func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = sUmask.Shutdown(ctx)
+		}()
+
+		addrUmask := lnUmask.Addr().String()
+
+		conn, err := rawLogin(addrUmask, "anonymous", "test@example.com")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close()
+
+		dataAddr, err := rawEnterPasv(conn)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		dataConn, err := net.DialTimeout("tcp", dataAddr, 5*time.Second)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer dataConn.Close()
+
+		// Store file
+		fmt.Fprintf(conn, "STOR private.txt\r\n")
+		fmt.Fprintf(dataConn, "secret")
+		dataConn.Close()
+
+		_, _, _ = rawReadResponse(conn) // 150
+		_, _, _ = rawReadResponse(conn) // 226
+
+		// Verify bits
+		// 0666 &^ 0077 = 0600
+		info, err := os.Stat(filepath.Join(rootDirUmask, "private.txt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		perm := info.Mode().Perm()
+		// We expect 0600 (rw-------)
+		if perm != 0600 {
+			t.Errorf("Expected 0600 permission with umask 077, got %v", perm)
+		}
+	}
 }
 
 // Helpers for TestServerMiscFeatures

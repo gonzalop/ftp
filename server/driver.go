@@ -133,4 +133,10 @@ type Settings struct {
 	// If 0, the OS assigns a random port.
 	// Must be >= PasvMinPort if both are set.
 	PasvMaxPort int
+
+	// Umask is the file mode creation mask.
+	// Common values: 022 (readable by all, writeable by owner), 077 (private).
+	// Default (if 0) depends on implementation (often 0).
+	// It is subtracted from the default permissions (0666 for files, 0777 for dirs).
+	Umask int
 }
