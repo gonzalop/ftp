@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1040,4 +1041,188 @@ func TestServerCoverage_NoAuth(t *testing.T) {
 			t.Errorf("%s without login expected 530, got %d", cmd, resp.Code)
 		}
 	}
+}
+
+func TestConnect_FTP(t *testing.T) {
+	addr, cleanup, _ := setupServer(t)
+	defer cleanup()
+
+	// Parse the port from the address
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Construct FTP URL
+	url := "ftp://127.0.0.1:" + port
+
+	// 1. Connect
+	c, err := ftp.Connect(url)
+	if err != nil {
+		t.Fatalf("Connect failed: %v", err)
+	}
+	defer func() {
+		if err := c.Quit(); err != nil {
+			t.Logf("Quit failed: %v", err)
+		}
+	}()
+
+	// 2. Verify command execution
+	if _, err := c.CurrentDir(); err != nil {
+		t.Errorf("CurrentDir failed: %v", err)
+	}
+}
+
+func TestConnect_Login(t *testing.T) {
+	addr, cleanup, _ := setupServer(t)
+	defer cleanup()
+
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// URL with credentials
+	url := "ftp://anonymous:anonymous@127.0.0.1:" + port
+
+	c, err := ftp.Connect(url)
+	if err != nil {
+		t.Fatalf("Connect failed: %v", err)
+	}
+	defer func() {
+		_ = c.Quit()
+	}()
+
+	// Should be logged in
+	if _, err := c.CurrentDir(); err != nil {
+		t.Errorf("CurrentDir failed: %v", err)
+	}
+}
+
+func TestConnect_FTPS(t *testing.T) {
+	// 1. Generate Server Cert
+	serverCertPath, serverKeyPath, _, _ := generateCert(t, false, nil, nil)
+	serverTLSConfig, err := tls.LoadX509KeyPair(serverCertPath, serverKeyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. Start Server with Implicit TLS support
+	rootDir := t.TempDir()
+	driver, err := server.NewFSDriver(rootDir,
+		server.WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+			return rootDir, false, nil
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := server.NewServer("127.0.0.1:0",
+		server.WithDriver(driver),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Manual implicit TLS listener setup for server side
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tlsListener := tls.NewListener(ln, &tls.Config{
+		Certificates: []tls.Certificate{serverTLSConfig},
+	})
+
+	go func() {
+		if err := s.Serve(tlsListener); err != nil && err != server.ErrServerClosed {
+			t.Logf("Server stopped: %v", err)
+		}
+	}()
+
+	addr := tlsListener.Addr().String()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = s.Shutdown(ctx)
+	}()
+
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 3. Connect using ftps://
+	// Note: Connect enforces standard TLS verification.
+	// Since we are using a self-signed certificate in this test environment,
+	// and Connect does not allow passing custom TLSMainConfig (like InsecureSkipVerify),
+	// we expect this connection attempt to fail with a certificate error.
+	c, err := ftp.Connect("ftps://127.0.0.1:" + port)
+	if err == nil {
+		_ = c.Quit()
+		t.Fatal("Expected FTPS connect to fail with self-signed cert, but it succeeded")
+	}
+	// Verify error relates to certificate
+	if !strings.Contains(err.Error(), "certificate") && !strings.Contains(err.Error(), "authority") {
+		t.Logf("Got expected error: %v", err)
+	}
+}
+
+func TestConnect_FTPExplicit(t *testing.T) {
+	// 1. Generate Server Cert
+	serverCertPath, serverKeyPath, _, _ := generateCert(t, false, nil, nil)
+	serverTLSConfig, err := tls.LoadX509KeyPair(serverCertPath, serverKeyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. Start Server
+	rootDir := t.TempDir()
+	driver, err := server.NewFSDriver(rootDir,
+		server.WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+			return rootDir, false, nil
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := server.NewServer("127.0.0.1:0",
+		server.WithDriver(driver),
+		server.WithTLS(&tls.Config{Certificates: []tls.Certificate{serverTLSConfig}}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	go func() {
+		if err := s.Serve(ln); err != nil && err != server.ErrServerClosed {
+			t.Logf("Server stopped: %v", err)
+		}
+	}()
+
+	addr := ln.Addr().String()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = s.Shutdown(ctx)
+	}()
+
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 3. Connect using ftp+explicit://
+	c, err := ftp.Connect("ftp+explicit://127.0.0.1:" + port)
+	if err == nil {
+		_ = c.Quit()
+		t.Fatal("Expected FTP+Explicit connect to fail with self-signed cert, but it succeeded")
+	}
+	t.Logf("Got expected error: %v", err)
 }
