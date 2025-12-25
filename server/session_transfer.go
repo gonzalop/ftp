@@ -46,9 +46,10 @@ func (s *session) handleRETR(path string) {
 	defer conn.Close()
 
 	if s.restartOffset > 0 {
-		s.reply(350, fmt.Sprintf("Restarting at %d. Send STOR or RETR to initiate transfer.", s.restartOffset))
+		s.reply(150, fmt.Sprintf("Opening data connection for RETR (restarting at %d).", s.restartOffset))
+	} else {
+		s.reply(150, "Opening data connection for RETR.")
 	}
-	s.reply(150, "Opening data connection for RETR.")
 
 	// Reset offset after use
 	s.restartOffset = 0
