@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 )
 
@@ -62,15 +63,27 @@ func (s *session) handleLIST(arg string) {
 		return
 	}
 
-	// In standard FTP, LIST without arguments lists the current directory.
-	// Some clients might send a path.
-	path := arg
+	// Parse flags and path
+	// Common flags: -l, -a, -R
+	// Format: LIST [-flags] [path]
+	var path string
+	var recursive bool
 
-	entries, err := s.fs.ListDir(path)
-	if err != nil {
-		s.replyError(err)
-		return
+	args := strings.Fields(arg)
+	for _, a := range args {
+		if strings.HasPrefix(a, "-") {
+			if strings.Contains(a, "R") {
+				recursive = true
+			}
+		} else {
+			path = a
+		}
 	}
+
+	// If no path provided, list current
+	// if path == "" {
+	// 	// internal logic handles empty path as current dir
+	// }
 
 	conn, err := s.connData()
 	if err != nil {
@@ -81,15 +94,94 @@ func (s *session) handleLIST(arg string) {
 
 	s.reply(150, "Here comes the directory listing.")
 
-	for _, entry := range entries {
-		// Constructing a Unix-style listing string.
-		// Note: This is a simplified format compatible with most clients.
-		sStr := fmt.Sprintf("%s 1 owner group %d %s %s\r\n",
-			entry.Mode().String(), entry.Size(), entry.ModTime().Format("Jan 02 15:04"), entry.Name())
-		fmt.Fprint(conn, sStr)
+	if recursive {
+		err = s.listRecursive(conn, path)
+	} else {
+		entries, listErr := s.fs.ListDir(path)
+		if listErr != nil {
+			// If not recursive, we might error out.
+			// But for LIST, often empty list is better than error if dir empty,
+			// but ListDir usually returns error if not found.
+			// However, standard says we should probably send error before opening data conn if path invalid?
+			// But we already opened data conn (standard behavior varies).
+			// Let's reply error on control channel if data conn empty?
+			// Actually RFC says if file not found, 550.
+			// But since we already sent 150, we should close data conn and maybe 226 or just empty.
+			// But simplest is to try-catch before 150?
+			// Let's stick to previous pattern: check error first.
+			// Wait, I already opened data conn. If ListDir fails, I should probably close and send 450/550.
+			// But `s.fs.ListDir` was called BEFORE `s.connData` in original code.
+			// I moved it after to handle recursion streaming.
+			// Let's revert to checking first for non-recursive case, or just handle error gracefully.
+			err = listErr
+		} else {
+			for _, entry := range entries {
+				s.printListEntry(conn, entry)
+			}
+		}
+	}
+
+	if err != nil {
+		// If we haven't written anything, we could send 550?
+		// But we sent 150. So we must close data conn (done by defer) and send 450 or 550.
+		// Or just 226 Transfer complete (but empty).
+		// If path invalid, better 550.
+		s.reply(550, "Error listing directory: "+err.Error())
+		return
 	}
 
 	s.reply(226, "Directory send OK.")
+}
+
+func (s *session) listRecursive(w io.Writer, path string) error {
+	// 1. List current dir
+	entries, err := s.fs.ListDir(path)
+	if err != nil {
+		return err
+	}
+
+	// Print current dir header if we are deep? Standard ls -R style:
+	// .:
+	// ...
+	//
+	// ./subdir:
+	// ...
+
+	// Helper to print entries
+	for _, entry := range entries {
+		s.printListEntry(w, entry)
+	}
+
+	// 2. Recurse into directories
+	for _, entry := range entries {
+		if entry.IsDir() && entry.Name() != "." && entry.Name() != ".." {
+			subPath := path
+			if subPath == "" || subPath == "." {
+				subPath = entry.Name()
+			} else {
+				if strings.HasSuffix(subPath, "/") {
+					subPath += entry.Name()
+				} else {
+					subPath += "/" + entry.Name()
+				}
+			}
+
+			// Add a blank line and header
+			fmt.Fprintf(w, "\r\n%s:\r\n", subPath)
+
+			// Recurse (ignoring errors for subdirs to keep going)
+			_ = s.listRecursive(w, subPath)
+		}
+	}
+
+	return nil
+}
+
+func (s *session) printListEntry(w io.Writer, entry os.FileInfo) {
+	// Constructing a Unix-style listing string.
+	sStr := fmt.Sprintf("%s 1 owner group %d %s %s\r\n",
+		entry.Mode().String(), entry.Size(), entry.ModTime().Format("Jan 02 15:04"), entry.Name())
+	fmt.Fprint(w, sStr)
 }
 
 func (s *session) handleNLST(arg string) {

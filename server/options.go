@@ -3,6 +3,7 @@ package server
 import (
 	"crypto/tls"
 	"fmt"
+	"io"
 	"log/slog"
 	"time"
 )
@@ -265,6 +266,23 @@ func WithEnableDirMessage(enabled bool) Option {
 func WithMetricsCollector(collector MetricsCollector) Option {
 	return func(s *Server) error {
 		s.metricsCollector = collector
+		return nil
+	}
+}
+
+// WithTransferLog sets a writer for standard FTP transfer logging (xferlog format).
+// This is useful for integrating with log analyzers that expect the standard format.
+//
+// Example:
+//
+//	logFile, _ := os.OpenFile("/var/log/xferlog", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+//	s, _ := server.NewServer(":21",
+//	    server.WithDriver(driver),
+//	    server.WithTransferLog(logFile),
+//	)
+func WithTransferLog(w io.Writer) Option {
+	return func(s *Server) error {
+		s.transferLog = w
 		return nil
 	}
 }

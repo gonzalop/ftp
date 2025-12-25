@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"maps"
 	"net"
@@ -112,6 +113,9 @@ type Server struct {
 	listener   net.Listener
 	conns      map[net.Conn]struct{}
 	inShutdown atomic.Bool
+
+	// Transfer logging (xferlog standard format)
+	transferLog io.Writer
 }
 
 // ErrServerClosed is returned by the Server's Serve, ServeTLS, ListenAndServe,

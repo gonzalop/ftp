@@ -665,3 +665,73 @@ func (s *session) reply(code int, message string) {
 	fmt.Fprintf(s.writer, "%d %s\r\n", code, message)
 	s.writer.Flush()
 }
+
+// logTransfer logs a file transfer in standard xferlog format.
+// Format: current-time transfer-time remote-host file-size filename transfer-type special-action-flag direction access-mode username service-name authentication-method authenticated-user-id completion-status
+func (s *session) logTransfer(cmd, filename string, bytes int64, duration time.Duration) {
+	if s.server.transferLog == nil {
+		return
+	}
+
+	now := time.Now()
+	transferTime := int64(duration.Seconds())
+	if transferTime == 0 {
+		transferTime = 1
+	}
+
+	// Remote host
+	remoteHost := s.remoteIP
+
+	// Transfer type: a (ascii), b (binary)
+	tType := "b"
+	if s.transferType == "A" {
+		tType = "a"
+	}
+
+	// Special action flag: _ (none), C (compressed), U (uncompressed), T (tar)
+	actionFlag := "_"
+
+	// Direction: o (outgoing/download), i (incoming/upload)
+	direction := "o"
+	if cmd == "STOR" || cmd == "APPE" || cmd == "STOU" {
+		direction = "i"
+	}
+
+	// Access mode: a (anonymous), g (guest), r (real user)
+	accessMode := "r"
+	if s.user == "anonymous" || s.user == "ftp" {
+		accessMode = "a"
+	}
+
+	// Authentication method: 0 (none), 1 (rfc931 auth)
+	authMethod := "0"
+
+	// Authenticated user ID: * (not available)
+	authUserID := "*"
+
+	// Completion status: c (complete), i (incomplete)
+	// We only log completed transfers for now
+	completionStatus := "c"
+
+	// Format line
+	// Mon Dec 25 15:04:05 2025 1 127.0.0.1 1024 /file.txt b _ o a anonymous ftp 0 * c
+	line := fmt.Sprintf("%s %d %s %d %s %s %s %s %s %s %s %s %s %s\n",
+		now.Format("Mon Jan 02 15:04:05 2006"), // Manually mimicking ctime format
+		transferTime,
+		remoteHost,
+		bytes,
+		filename,
+		tType,
+		actionFlag,
+		direction,
+		accessMode,
+		s.user,
+		"ftp",
+		authMethod,
+		authUserID,
+		completionStatus,
+	)
+
+	// Write to log (ignore errors)
+	_, _ = s.server.transferLog.Write([]byte(line))
+}

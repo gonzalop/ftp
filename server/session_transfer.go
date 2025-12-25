@@ -132,6 +132,9 @@ func (s *session) handleRETR(path string) {
 			s.server.metricsCollector.RecordTransfer("RETR", bytesTransferred, duration)
 		}
 
+		// Transfer logging
+		s.logTransfer("RETR", path, bytesTransferred, duration)
+
 		s.endTransfer()
 		s.reply(226, "Transfer complete.")
 	}()
@@ -237,6 +240,9 @@ func (s *session) handleSTOR(path string) {
 			s.server.metricsCollector.RecordTransfer("STOR", bytesTransferred, duration)
 		}
 
+		// Transfer logging
+		s.logTransfer("STOR", path, bytesTransferred, duration)
+
 		s.endTransfer()
 		s.reply(226, "Transfer complete.")
 	}()
@@ -270,12 +276,14 @@ func (s *session) handleAPPE(path string) {
 		defer file.Close()
 		defer conn.Close()
 
+		startTime := time.Now()
 		var src io.Reader = conn
 		if s.transferType == "A" {
 			src = newASCIIWriter(conn)
 		}
 
-		if _, err := io.Copy(file, src); err != nil {
+		bytesTransferred, err := io.Copy(file, src)
+		if err != nil {
 			select {
 			case <-ctx.Done():
 				s.reply(426, "Transfer aborted.")
@@ -283,6 +291,15 @@ func (s *session) handleAPPE(path string) {
 				s.reply(426, "Connection closed; transfer aborted.")
 			}
 			return
+		}
+		duration := time.Since(startTime)
+
+		// Transfer logging
+		s.logTransfer("APPE", path, bytesTransferred, duration)
+
+		// Metrics collection
+		if s.server.metricsCollector != nil {
+			s.server.metricsCollector.RecordTransfer("APPE", bytesTransferred, duration)
 		}
 
 		s.endTransfer()
@@ -322,12 +339,14 @@ func (s *session) handleSTOU() {
 		defer file.Close()
 		defer conn.Close()
 
+		startTime := time.Now()
 		var src io.Reader = conn
 		if s.transferType == "A" {
 			src = newASCIIWriter(conn)
 		}
 
-		if _, err := io.Copy(file, src); err != nil {
+		bytesTransferred, err := io.Copy(file, src)
+		if err != nil {
 			select {
 			case <-ctx.Done():
 				s.reply(426, "Transfer aborted.")
@@ -335,6 +354,15 @@ func (s *session) handleSTOU() {
 				s.reply(426, "Connection closed; transfer aborted.")
 			}
 			return
+		}
+		duration := time.Since(startTime)
+
+		// Transfer logging
+		s.logTransfer("STOU", path, bytesTransferred, duration)
+
+		// Metrics collection
+		if s.server.metricsCollector != nil {
+			s.server.metricsCollector.RecordTransfer("STOU", bytesTransferred, duration)
 		}
 
 		s.endTransfer()

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -374,4 +375,229 @@ func TestABOR(t *testing.T) {
 	if err == nil {
 		t.Error("Expected data connection to be closed after ABOR")
 	}
+}
+
+func TestServerMiscFeatures(t *testing.T) {
+	// Setup temporary directory
+	rootDir := t.TempDir()
+
+	// Create test file structure
+	// /
+	//   file1.txt
+	//   subdir/
+	//     file2.txt
+	err := os.WriteFile(filepath.Join(rootDir, "file1.txt"), []byte("content1"), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = os.Mkdir(filepath.Join(rootDir, "subdir"), 0755)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = os.WriteFile(filepath.Join(rootDir, "subdir", "file2.txt"), []byte("content2"), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Buffer for transfer log
+	var logBuf bytes.Buffer
+
+	// Create driver with Anon Write enabled
+	driver, err := NewFSDriver(rootDir, WithAnonWrite(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create server with transfer logging
+	s, err := NewServer(":0",
+		WithDriver(driver),
+		WithTransferLog(&logBuf),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Start server
+	ln, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		if err := s.Serve(ln); err != ErrServerClosed {
+			t.Errorf("Serve() execution error: %v", err)
+		}
+	}()
+	defer func() { _ = s.Shutdown(context.Background()) }()
+
+	// Wait for server to start
+	addr := ln.Addr().String()
+
+	/* TEST 1: Anonymous Write (STOR) & Transfer Logging */
+	{
+		conn, err := rawLogin(addr, "anonymous", "test@example.com")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close()
+
+		// Passive mode
+		dataAddr, err := rawEnterPasv(conn)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Connect data channel
+		dataConn, err := net.DialTimeout("tcp", dataAddr, 5*time.Second)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer dataConn.Close()
+
+		// Upload file
+		fmt.Fprintf(conn, "STOR upload.txt\r\n")
+		// Write data
+		fmt.Fprintf(dataConn, "uploaded content")
+		dataConn.Close() // Close data conn to finish transfer
+
+		// Read response
+		code, _, err := rawReadResponse(conn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Expect 150 then 226
+		if code == 150 {
+			code, _, err = rawReadResponse(conn)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		if code != 226 {
+			t.Errorf("Expected 226 Transfer complete, got %d", code)
+		}
+
+		conn.Close()
+	}
+
+	// Verify Log
+	time.Sleep(100 * time.Millisecond) // Allow log flush
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, "upload.txt") {
+		t.Errorf("Log should contain filename 'upload.txt', got: %s", logOutput)
+	}
+	if !strings.Contains(logOutput, "i a anonymous") { // incoming, anonymous
+		t.Errorf("Log should indicate incoming anonymous transfer, got: %s", logOutput)
+	}
+
+	/* TEST 2: Recursive List (LIST -R) */
+	{
+		conn, err := rawLogin(addr, "anonymous", "test@example.com")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close()
+
+		dataAddr, err := rawEnterPasv(conn)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		dataConn, err := net.DialTimeout("tcp", dataAddr, 5*time.Second)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		fmt.Fprintf(conn, "LIST -R\r\n")
+
+		// Read all data from data connection
+		var buf bytes.Buffer
+		_, err = buf.ReadFrom(dataConn)
+		dataConn.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Consume control response
+		_, _, _ = rawReadResponse(conn)
+		_, _, _ = rawReadResponse(conn)
+
+		listing := buf.String()
+		if !strings.Contains(listing, "file1.txt") {
+			t.Errorf("Recursive listing missing root file. Got:\n%s", listing)
+		}
+		if !strings.Contains(listing, "subdir:") {
+			t.Errorf("Recursive listing missing subdir header")
+		}
+		if !strings.Contains(listing, "file2.txt") {
+			t.Errorf("Recursive listing missing subdir file")
+		}
+	}
+}
+
+// Helpers for TestServerMiscFeatures
+
+func rawLogin(addr, user, pass string) (*textConn, error) {
+	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	tc := &textConn{conn}
+
+	// Read greeting
+	if _, _, err := rawReadResponse(tc); err != nil {
+		return nil, err
+	}
+
+	fmt.Fprintf(conn, "USER %s\r\n", user)
+	if _, _, err := rawReadResponse(tc); err != nil {
+		return nil, err
+	}
+
+	fmt.Fprintf(conn, "PASS %s\r\n", pass)
+	if code, _, err := rawReadResponse(tc); err != nil || code != 230 {
+		return nil, fmt.Errorf("login failed: %d %v", code, err)
+	}
+
+	return tc, nil
+}
+
+func rawEnterPasv(c *textConn) (string, error) {
+	fmt.Fprintf(c.Conn, "PASV\r\n")
+	code, msg, err := rawReadResponse(c)
+	if err != nil {
+		return "", err
+	}
+	if code != 227 {
+		return "", fmt.Errorf("PASV failed: %d", code)
+	}
+
+	// Parse "227 Entering Passive Mode (h1,h2,h3,h4,p1,p2)."
+	start := strings.Index(msg, "(")
+	end := strings.Index(msg, ")")
+	if start == -1 || end == -1 {
+		return "", fmt.Errorf("invalid PASV response")
+	}
+
+	// Re-parse simplified
+	var v1, v2, v3, v4, vp1, vp2 int
+	_, _ = fmt.Sscanf(msg[start+1:end], "%d,%d,%d,%d,%d,%d", &v1, &v2, &v3, &v4, &vp1, &vp2)
+	port := vp1*256 + vp2
+	ip := fmt.Sprintf("%d.%d.%d.%d", v1, v2, v3, v4)
+
+	return fmt.Sprintf("%s:%d", ip, port), nil
+}
+
+type textConn struct {
+	net.Conn
+}
+
+func rawReadResponse(c *textConn) (int, string, error) {
+	buf := make([]byte, 1024)
+	n, err := c.Read(buf)
+	if err != nil {
+		return 0, "", err
+	}
+	line := string(buf[:n])
+	var code int
+	_, _ = fmt.Sscanf(line, "%d", &code)
+	return code, line, nil
 }

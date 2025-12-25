@@ -50,6 +50,11 @@ type FSDriver struct {
 	// process, including anonymous access.
 	disableAnonymous bool
 
+	// enableAnonWrite, if true, allows anonymous users to perform write operations
+	// (upload, mkdir, delete, etc.).
+	// Default is false (read-only).
+	enableAnonWrite bool
+
 	settings *Settings // Optional server settings
 }
 
@@ -62,7 +67,7 @@ type FSDriverOption func(*FSDriver)
 //
 // Default behavior:
 //   - Allows anonymous login ("ftp" or "anonymous" users)
-//   - Anonymous users have read-only access
+//   - Anonymous users have read-only access (unless WithAnonWrite(true) is used)
 //   - All operations are confined to the root path
 //
 // Basic usage:
@@ -168,6 +173,15 @@ func WithDisableAnonymous(disable bool) FSDriverOption {
 	}
 }
 
+// WithAnonWrite enables write access for anonymous users.
+// Default is false (read-only).
+// Use this with caution.
+func WithAnonWrite(enable bool) FSDriverOption {
+	return func(d *FSDriver) {
+		d.enableAnonWrite = enable
+	}
+}
+
 // WithSettings sets server-specific settings for the driver.
 // These settings configure passive mode behavior and other server features.
 //
@@ -208,7 +222,8 @@ func (d *FSDriver) Authenticate(user, pass, host string) (ClientContext, error) 
 		if user != "ftp" && user != "anonymous" {
 			return nil, errors.New("only anonymous login allowed")
 		}
-		readOnly = true
+		// Anonymous access: read-only unless explicitly enabled
+		readOnly = !d.enableAnonWrite
 	}
 
 	// Open the root directory safely
