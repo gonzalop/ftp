@@ -136,6 +136,7 @@ type command struct {
 // commands and data transfers, enabling support for commands like ABOR.
 //
 // Concurrency Model:
+//
 //  1. Reader Goroutine: A dedicated goroutine is spawned to read commands from
 //     the client's control connection. It sends each command to the main `serve`
 //     loop via the `cmdChan`.
@@ -656,6 +657,7 @@ func (s *session) replyError(err error) {
 	}
 	s.reply(550, "Action failed: "+err.Error())
 }
+
 // reply sends a response to the client.
 func (s *session) reply(code int, message string) {
 	s.mu.Lock()

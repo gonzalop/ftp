@@ -45,7 +45,7 @@ This server implements **comprehensive** FTP protocol support, focusing on moder
 | **STOR** | Store | ✅ Implemented |
 | **TYPE** | Representation Type | ✅ Implemented |
 | **USER** | User Name | ✅ Implemented |
-| ABOR | Abort | ❌ Client closes connection |
+| ABOR | Abort | ✅ Implemented |
 | **ACCT** | Account | ✅ Implemented (RFC 1123) |
 | ALLO | Allocate | ❌ Automatic on modern systems |
 | APPE | Append | ✅ Implemented |

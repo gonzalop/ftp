@@ -8,6 +8,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -396,6 +397,24 @@ func (c *Client) Features() (map[string]string, error) {
 	return c.features, nil
 }
 
+// Syst returns the system type of the server using the SYST command.
+//
+// Example:
+//
+//	syst, err := client.Syst()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	fmt.Printf("Server system type: %s\n", syst)
+func (c *Client) Syst() (string, error) {
+	resp, err := c.expect2xx("SYST")
+	if err != nil {
+		return "", err
+	}
+
+	return resp.Message, nil
+}
+
 // parseFeatureLines parses the lines of a FEAT response.
 // Supports both formats:
 // - RFC 2389: "211-Features:\r\n FEAT1\r\n FEAT2 params\r\n211 End"
@@ -480,6 +499,17 @@ func (c *Client) Noop() error {
 //	resp, err := client.Quote("SITE", "CHMOD", "755", "script.sh")
 func (c *Client) Quote(command string, args ...string) (*Response, error) {
 	return c.sendCommand(command, args...)
+}
+
+// Abort cancels an active file transfer.
+// It sends the ABOR command to the server if there's an ongoing transfer.
+func (c *Client) Abort() error {
+	if atomic.LoadInt32(&c.transferInProgress) == 0 {
+		return fmt.Errorf("(local) No transfer in progress")
+	}
+
+	_, err := c.expect2xx("ABOR")
+	return err
 }
 
 // Hash requests the hash of a file from the server using the HASH command.

@@ -532,6 +532,19 @@ func TestClient_Integration(t *testing.T) {
 		t.Errorf("Noop failed: %v", err)
 	}
 
+	// 1.1 Test Syst
+	syst, err := c.Syst()
+	if err != nil {
+		t.Errorf("Syst failed: %v", err)
+	}
+	if syst == "" {
+		t.Error("Syst returned empty string")
+	}
+	// Default server name in this project is "UNIX Type: L8"
+	if syst != "UNIX Type: L8" {
+		t.Errorf("Expected SYST to be 'UNIX Type: L8', got %q", syst)
+	}
+
 	// 2. Test CurrentDir and ChangeDir
 	pwd, err := c.CurrentDir()
 	if err != nil {

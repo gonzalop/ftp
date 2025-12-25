@@ -43,19 +43,19 @@ This library implements **comprehensive support** for the following RFC 5797 FEA
 | **USER** | User Name | ✅ `Login()` |
 | **NOOP** | No-Op | ✅ `Noop()` |
 | **PORT** | Data Port | ✅ `WithActiveMode()` |
-| ABOR | Abort | ❌ Client closes connection |
+| ABOR | Abort | ✅ `Abort()` |
 | ACCT | Account | ❌ Obsolete auth method |
 | ALLO | Allocate | ❌ Automatic on modern systems |
-| CDUP | Change to Parent Directory | ❌ Use CWD(..) instead |
+| CDUP | Change to Parent Directory | ✅ `ChangeDirToParent()` |
 | HELP | Help | ❌ Client knows capabilities |
 | MODE | Transfer Mode | ❌ Stream mode (default) only |
 | REIN | Reinitialize | ❌ Reconnect instead |
-| SITE | Site Parameters | ❌ Server-specific |
+| SITE | Site Parameters | ✅ `Chmod()` (for SITE CHMOD) |
 | SMNT | Structure Mount | ❌ Rarely used |
 | STAT | Status | ❌ Not needed by client |
-| STOU | Store Unique | ❌ Not implemented |
+| STOU | Store Unique | ✅ `StoreUnique()` |
 | STRU | File Structure | ❌ File structure (default) only |
-| SYST | System | ❌ Not needed |
+| **SYST** | System | ✅ `Syst()` |
 | XCUP | {obsolete: use CDUP} | 🏛️ Historic - deprecated by RFC 1123 |
 | XCWD | {obsolete: use CWD} | 🏛️ Historic - deprecated by RFC 1123 |
 | XMKD | {obsolete: use MKD} | 🏛️ Historic - deprecated by RFC 1123 |
