@@ -786,4 +786,101 @@ func TestClient_Integration(t *testing.T) {
 			t.Error("MLList did not find progress.txt")
 		}
 	}
+
+	// 20. Test StoreFrom
+	localUploadPath := filepath.Join(rootDir, "local_upload.txt")
+	uploadContent := "StoreFrom test content"
+	if err := os.WriteFile(localUploadPath, []byte(uploadContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := c.StoreFrom("stored_from.txt", localUploadPath); err != nil {
+		t.Errorf("StoreFrom failed: %v", err)
+	}
+
+	// Verify on server
+	serverStoredContent, err := os.ReadFile(filepath.Join(rootDir, "stored_from.txt"))
+	if err != nil {
+		t.Fatalf("Could not read stored file on server: %v", err)
+	}
+	if string(serverStoredContent) != uploadContent {
+		t.Errorf("StoreFrom content mismatch: got %q, want %q", string(serverStoredContent), uploadContent)
+	}
+
+	// 21. Test RetrieveTo
+	localDownloadPath := filepath.Join(rootDir, "local_download.txt")
+	if err := c.RetrieveTo("stored_from.txt", localDownloadPath); err != nil {
+		t.Errorf("RetrieveTo failed: %v", err)
+	}
+
+	downloadedContent, err := os.ReadFile(localDownloadPath)
+	if err != nil {
+		t.Fatalf("Could not read downloaded file: %v", err)
+	}
+	if string(downloadedContent) != uploadContent {
+		t.Errorf("RetrieveTo content mismatch: got %q, want %q", string(downloadedContent), uploadContent)
+	}
+
+	// 22. Test RetrieveFrom (Resume Download / REST + RETR)
+	// We'll download the last part of "stored_from.txt" which has "StoreFrom test content"
+	// Let's skip the first 10 bytes: "StoreFrom "
+	offset := int64(10)
+	expectedPartial := uploadContent[offset:]
+	var partialBuf bytes.Buffer
+
+	if err := c.RetrieveFrom("stored_from.txt", &partialBuf, offset); err != nil {
+		t.Errorf("RetrieveFrom failed: %v", err)
+	}
+	if partialBuf.String() != expectedPartial {
+		t.Errorf("RetrieveFrom content mismatch: got %q, want %q", partialBuf.String(), expectedPartial)
+	}
+
+	// 23. Test StoreAt (Resume Upload / REST + STOR/APPE)
+	// We'll append to a new file using StoreAt
+	// First create a file with some content
+	initialContent := "Initial "
+	if err := c.Store("resume_upload.txt", bytes.NewBufferString(initialContent)); err != nil {
+		t.Fatal(err)
+	}
+
+	// Now append using StoreAt with offset
+	// Note: StoreAt with offset > 0 uses APPE which might not strictly use REST depending on implementation,
+	// but the client implementation checks offset > 0.
+	// Actually client.StoreAt uses APPE if offset > 0.
+	// Let's verify it works.
+	appendContent := "Appended"
+	if err := c.StoreAt("resume_upload.txt", bytes.NewBufferString(appendContent), int64(len(initialContent))); err != nil {
+		t.Errorf("StoreAt failed: %v", err)
+	}
+
+	// Verify full content
+	fullContent, err := os.ReadFile(filepath.Join(rootDir, "resume_upload.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(fullContent) != initialContent+appendContent {
+		t.Errorf("StoreAt content mismatch: got %q, want %q", string(fullContent), initialContent+appendContent)
+	}
+
+	// 24. Test RestartAt directly
+	// Send REST command then RETR manually (via Retrieve but setting offset first)
+	// Note: Client.Retrieve doesn't send REST. We have to use RestartAt then Retrieve?
+	// But Retrieve resets state?
+	// Looking at client code, Retrieve just sends RETR.
+	// So:
+	if err := c.RestartAt(5); err != nil {
+		t.Errorf("RestartAt failed: %v", err)
+	}
+	// Verify it affects the next command?
+	// The client library doesn't strictly track the state between calls unless we look at the implementation.
+	// But the server should respect it if we send RETR next.
+	var restBuf bytes.Buffer
+	if err := c.Retrieve("stored_from.txt", &restBuf); err != nil {
+		t.Errorf("Retrieve after RestartAt failed: %v", err)
+	}
+	// The server should have sent from offset 5
+	expectedRest := uploadContent[5:]
+	if restBuf.String() != expectedRest {
+		t.Errorf("RestartAt + Retrieve content mismatch: got %q, want %q", restBuf.String(), expectedRest)
+	}
 }

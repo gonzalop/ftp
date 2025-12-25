@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"net"
 	"os"
 	"path/filepath"
@@ -121,5 +122,124 @@ func TestServerIntegration(t *testing.T) {
 	}
 	if string(diskContent) != uploadContent {
 		t.Errorf("Uploaded content mismatch: got %q, want %q", string(diskContent), uploadContent)
+	}
+
+	// 9. Test STOU (Store Unique)
+	uniqueContent := "Unique upload"
+	uniqueBuf := bytes.NewBufferString(uniqueContent)
+	uniqueName, err := c.StoreUnique(uniqueBuf)
+	if err != nil {
+		t.Fatalf("StoreUnique failed: %v", err)
+	}
+	if uniqueName == "" {
+		t.Error("StoreUnique returned empty filename")
+	} else {
+		t.Logf("StoreUnique generated: %s", uniqueName)
+		// Verify upload on disk
+		diskUniqueContent, err := os.ReadFile(filepath.Join(rootDir, uniqueName))
+		if err != nil {
+			t.Fatalf("Could not read unique file %s: %v", uniqueName, err)
+		}
+		if string(diskUniqueContent) != uniqueContent {
+			t.Errorf("Unique content mismatch: got %q, want %q", string(diskUniqueContent), uniqueContent)
+		}
+	}
+}
+
+func TestServer_ActiveMode(t *testing.T) {
+	rootDir := t.TempDir()
+	err := os.WriteFile(filepath.Join(rootDir, "active.txt"), []byte("active mode content"), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	driver, _ := NewFSDriver(rootDir, WithAuthenticator(func(u, p, h string) (string, bool, error) {
+		return rootDir, false, nil
+	}))
+
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	server, _ := NewServer(ln.Addr().String(), WithDriver(driver))
+	go func() {
+		if err := server.Serve(ln); err != nil && err != ErrServerClosed {
+			t.Logf("Server serve error: %v", err)
+		}
+	}()
+	defer func() {
+		if err := server.Shutdown(context.Background()); err != nil {
+			t.Logf("Server shutdown error: %v", err)
+		}
+	}()
+
+	c, err := ftp.Dial(ln.Addr().String(), ftp.WithActiveMode())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Quit(); err != nil {
+			t.Logf("Quit failed: %v", err)
+		}
+	}()
+
+	if err := c.Login("test", "test"); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	if err := c.Retrieve("active.txt", &buf); err != nil {
+		t.Fatal(err)
+	}
+
+	if buf.String() != "active mode content" {
+		t.Errorf("Content mismatch: %s", buf.String())
+	}
+}
+
+func TestServer_Restart(t *testing.T) {
+	rootDir := t.TempDir()
+	content := "0123456789"
+	err := os.WriteFile(filepath.Join(rootDir, "resume.txt"), []byte(content), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	driver, _ := NewFSDriver(rootDir, WithAuthenticator(func(u, p, h string) (string, bool, error) {
+		return rootDir, false, nil
+	}))
+
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	server, _ := NewServer(ln.Addr().String(), WithDriver(driver))
+	go func() {
+		if err := server.Serve(ln); err != nil && err != ErrServerClosed {
+			t.Logf("Server serve error: %v", err)
+		}
+	}()
+	defer func() {
+		if err := server.Shutdown(context.Background()); err != nil {
+			t.Logf("Server shutdown error: %v", err)
+		}
+	}()
+
+	c, err := ftp.Dial(ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Quit(); err != nil {
+			t.Logf("Quit failed: %v", err)
+		}
+	}()
+
+	if err := c.Login("test", "test"); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	// Use RetrieveFrom which handles RestartAt internally
+	if err := c.RetrieveFrom("resume.txt", &buf, 5); err != nil {
+		t.Fatal(err)
+	}
+
+	if buf.String() != "56789" {
+		t.Errorf("Expected 56789, got %s", buf.String())
 	}
 }
