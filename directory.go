@@ -299,68 +299,19 @@ func parseUnixEntry(entry *Entry, fields []string) bool {
 	// Determine if first field is permissions (symbolic or numeric)
 	perms := fields[0]
 
-	// Check for symbolic permissions (starts with -, d, l, etc.)
-	isSymbolic := len(perms) >= 1 && (perms[0] == '-' || perms[0] == 'd' ||
-		perms[0] == 'l' || perms[0] == 'b' || perms[0] == 'c' ||
-		perms[0] == 'p' || perms[0] == 's')
-
-	// Check for numeric permissions (3-4 digits)
-	isNumeric := len(perms) >= 3 && len(perms) <= 4
-	for _, ch := range perms {
-		if ch < '0' || ch > '7' {
-			isNumeric = false
-			break
-		}
-	}
+	isSymbolic := isSymbolicPerms(perms)
+	isNumeric := isNumericPerms(perms)
 
 	if !isSymbolic && !isNumeric {
 		return false
 	}
 
 	// Determine type from permissions
-	if isSymbolic {
-		if perms[0] == 'd' {
-			entry.Type = "dir"
-		} else if perms[0] == 'l' {
-			entry.Type = "link"
-		} else {
-			entry.Type = "file"
-		}
-	} else {
-		// Numeric permissions - assume file (can't determine type)
-		entry.Type = "file"
-	}
+	entry.Type = parseUnixType(perms, isSymbolic)
 
-	// Determine field layout: 9-field or 8-field format
-	// 9-field: perms links owner group size month day time/year name
-	// 8-field: perms links owner size month day time/year name
-	var sizeIdx, nameStartIdx int
-
-	if len(fields) >= 9 {
-		// Try 9-field format first
-		if _, err := parseSize(fields[4]); err == nil {
-			sizeIdx = 4
-			nameStartIdx = 8
-		} else if len(fields) >= 8 {
-			// Try 8-field format (no group)
-			if _, err := parseSize(fields[3]); err == nil {
-				sizeIdx = 3
-				nameStartIdx = 7
-			} else {
-				return false
-			}
-		} else {
-			return false
-		}
-	} else if len(fields) >= 8 {
-		// Only 8 fields, try 8-field format
-		if _, err := parseSize(fields[3]); err == nil {
-			sizeIdx = 3
-			nameStartIdx = 7
-		} else {
-			return false
-		}
-	} else {
+	// Determine field layout and parsing
+	sizeIdx, nameStartIdx, ok := parseUnixLayout(fields)
+	if !ok {
 		return false
 	}
 
@@ -375,17 +326,68 @@ func parseUnixEntry(entry *Entry, fields []string) bool {
 		return false
 	}
 
-	// Name is everything after nameStartIdx
+	// Parse name
+	parseUnixName(entry, fields, nameStartIdx)
+
+	return true
+}
+
+func isSymbolicPerms(perms string) bool {
+	return len(perms) >= 1 && (perms[0] == '-' || perms[0] == 'd' ||
+		perms[0] == 'l' || perms[0] == 'b' || perms[0] == 'c' ||
+		perms[0] == 'p' || perms[0] == 's')
+}
+
+func isNumericPerms(perms string) bool {
+	if len(perms) < 3 || len(perms) > 4 {
+		return false
+	}
+	for _, ch := range perms {
+		if ch < '0' || ch > '7' {
+			return false
+		}
+	}
+	return true
+}
+
+func parseUnixType(perms string, isSymbolic bool) string {
+	if isSymbolic {
+		if perms[0] == 'd' {
+			return "dir"
+		} else if perms[0] == 'l' {
+			return "link"
+		} else {
+			return "file"
+		}
+	}
+	// Numeric permissions - assume file (can't determine type reliably)
+	return "file"
+}
+
+func parseUnixLayout(fields []string) (sizeIdx, nameStartIdx int, ok bool) {
+	// 9-field: perms links owner group size month day time/year name
+	if len(fields) >= 9 {
+		if _, err := parseSize(fields[4]); err == nil {
+			return 4, 8, true
+		}
+	}
+	// 8-field: perms links owner size month day time/year name (no group)
+	if len(fields) >= 8 {
+		if _, err := parseSize(fields[3]); err == nil {
+			return 3, 7, true
+		}
+	}
+	return 0, 0, false
+}
+
+func parseUnixName(entry *Entry, fields []string, nameStartIdx int) {
 	fullName := strings.Join(fields[nameStartIdx:], " ")
 
-	// For links, extract the actual name and target (format: "name -> target")
 	if entry.Type == "link" {
-		// Use " -> " as separator (note the spaces)
 		if before, after, ok := strings.Cut(fullName, " -> "); ok {
 			entry.Name = before
-			entry.Target = after // Skip " -> "
+			entry.Target = after
 		} else {
-			// Fallback: no arrow found, just use the full name
 			slog.Debug("Symlink detected but no arrow separator found",
 				"raw", entry.Raw,
 				"fullname", fullName)
@@ -394,8 +396,6 @@ func parseUnixEntry(entry *Entry, fields []string) bool {
 	} else {
 		entry.Name = fullName
 	}
-
-	return true
 }
 
 // parseEPLFEntry parses an EPLF (Easily Parsed LIST Format) entry.

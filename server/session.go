@@ -240,15 +240,67 @@ func (s *session) handleCommand(line string) {
 	var err error
 	switch cmd {
 	// Access Control
-	case "USER":
-		err = s.handleUSER(arg)
-	case "PASS":
-		err = s.handlePASS(arg)
-	case "QUIT":
-		s.reply(221, "Service closing control connection.")
-		return
+	case "USER", "PASS", "QUIT":
+		err = s.handleAccessCommand(cmd, arg)
 
 	// File Management
+	case "CWD", "CDUP", "UP", "PWD", "LIST", "NLST", "MKD", "XMKD", "RMD", "XRMD", "DELE", "RNFR", "RNTO":
+		s.handleFileCommand(cmd, arg)
+
+	// File Transfer
+	case "RETR", "STOR", "APPE", "STOU":
+		s.handleTransferCommand(cmd, arg)
+
+	// Transfer Parameters
+	case "TYPE", "PORT", "PASV", "EPSV", "EPRT", "REST":
+		s.handleParamCommand(cmd, arg)
+
+	// Information
+	case "SIZE", "MDTM", "FEAT", "OPTS", "MLSD", "MLST", "NOOP":
+		s.handleInfoCommand(cmd, arg)
+
+	// Security
+	case "AUTH", "PROT", "PBSZ":
+		s.handleSecurityCommand(cmd, arg)
+
+	// RFC 1123 Compliance
+	case "ACCT", "MODE", "STRU", "SYST", "STAT", "HELP", "SITE":
+		s.handleComplianceCommand(cmd, arg)
+
+	// Extensions
+	case "HOST", "HASH", "MFMT":
+		s.handleExtensionsCommand(cmd, arg)
+
+	default:
+		s.reply(502, "Command not implemented.")
+	}
+
+	if err != nil {
+		s.server.logger.Error("command handling error",
+			"session_id", s.sessionID,
+			"remote_ip", s.remoteIP,
+			"user", s.user,
+			"cmd", cmd,
+			"error", err,
+		)
+	}
+}
+
+func (s *session) handleAccessCommand(cmd, arg string) error {
+	switch cmd {
+	case "USER":
+		return s.handleUSER(arg)
+	case "PASS":
+		return s.handlePASS(arg)
+	case "QUIT":
+		s.reply(221, "Service closing control connection.")
+		return nil
+	}
+	return nil
+}
+
+func (s *session) handleFileCommand(cmd, arg string) {
+	switch cmd {
 	case "CWD":
 		s.handleCWD(arg)
 	case "CDUP", "UP":
@@ -269,8 +321,11 @@ func (s *session) handleCommand(line string) {
 		s.handleRNFR(arg)
 	case "RNTO":
 		s.handleRNTO(arg)
+	}
+}
 
-	// File Transfer
+func (s *session) handleTransferCommand(cmd, arg string) {
+	switch cmd {
 	case "RETR":
 		s.handleRETR(arg)
 	case "STOR":
@@ -279,8 +334,11 @@ func (s *session) handleCommand(line string) {
 		s.handleAPPE(arg)
 	case "STOU":
 		s.handleSTOU()
+	}
+}
 
-	// Transfer Parameters
+func (s *session) handleParamCommand(cmd, arg string) {
+	switch cmd {
 	case "TYPE":
 		s.handleTYPE(arg)
 	case "PORT":
@@ -293,8 +351,11 @@ func (s *session) handleCommand(line string) {
 		s.handleEPRT(arg)
 	case "REST":
 		s.handleREST(arg)
+	}
+}
 
-	// Information
+func (s *session) handleInfoCommand(cmd, arg string) {
+	switch cmd {
 	case "SIZE":
 		s.handleSIZE(arg)
 	case "MDTM":
@@ -309,16 +370,22 @@ func (s *session) handleCommand(line string) {
 		s.handleMLST(arg)
 	case "NOOP":
 		s.reply(200, "OK.")
+	}
+}
 
-	// Security
+func (s *session) handleSecurityCommand(cmd, arg string) {
+	switch cmd {
 	case "AUTH":
 		s.handleAUTH(arg)
 	case "PROT":
 		s.handlePROT(arg)
 	case "PBSZ":
 		s.handlePBSZ(arg)
+	}
+}
 
-	// RFC 1123 Compliance
+func (s *session) handleComplianceCommand(cmd, arg string) {
+	switch cmd {
 	case "ACCT":
 		s.handleACCT(arg)
 	case "MODE":
@@ -333,116 +400,94 @@ func (s *session) handleCommand(line string) {
 		s.handleHELP(arg)
 	case "SITE":
 		s.handleSITE(arg)
+	}
+}
 
-	// Extensions
+func (s *session) handleExtensionsCommand(cmd, arg string) {
+	switch cmd {
 	case "HOST":
 		s.handleHOST(arg)
 	case "HASH":
 		s.handleHASH(arg)
 	case "MFMT":
 		s.handleMFMT(arg)
-
-	default:
-		s.reply(502, "Command not implemented.")
-	}
-
-	if err != nil {
-		s.server.logger.Error("command handling error",
-			"session_id", s.sessionID,
-			"remote_ip", s.remoteIP,
-			"user", s.user,
-			"cmd", cmd,
-			"error", err,
-		)
 	}
 }
 
 func (s *session) connData() (net.Conn, error) {
 	if s.pasvList != nil {
-		s.server.logger.Debug("waiting for passive connection",
-			"session_id", s.sessionID,
-			"remote_ip", s.remoteIP,
-		)
-		// Set a deadline for the client to connect
-		if t, ok := s.pasvList.(*net.TCPListener); ok {
-			_ = t.SetDeadline(time.Now().Add(10 * time.Second))
-		}
-		conn, err := s.pasvList.Accept()
-		if err != nil {
-			return nil, err
-		}
-		s.pasvList.Close()
-		s.pasvList = nil
-
-		// Wrap in TLS if protected
-		if s.prot == "P" {
-			if s.server.tlsConfig == nil {
-				conn.Close()
-				return nil, fmt.Errorf("TLS configuration missing")
-			}
-			tlsConn := tls.Server(conn, s.server.tlsConfig)
-			if err := tlsConn.Handshake(); err != nil {
-				conn.Close()
-				return nil, err
-			}
-			conn = tlsConn
-		}
-
-		// Apply timeouts to data connection
-		if s.server.readTimeout > 0 {
-			_ = conn.SetReadDeadline(time.Now().Add(s.server.readTimeout))
-		}
-		if s.server.writeTimeout > 0 {
-			_ = conn.SetWriteDeadline(time.Now().Add(s.server.writeTimeout))
-		}
-
-		// Track data connection
-		s.server.trackConnection(conn, true)
-		return &trackingConn{Conn: conn, server: s.server}, nil
+		return s.connPassive()
 	}
 
 	if s.activeIP != "" {
-		addr := net.JoinHostPort(s.activeIP, strconv.Itoa(s.activePort))
-		s.server.logger.Debug("dialing active connection",
-			"session_id", s.sessionID,
-			"remote_ip", s.remoteIP,
-			"addr", addr,
-		)
-		conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
-		if err != nil {
-			return nil, err
-		}
-		s.activeIP = "" // Reset after use
-
-		// Wrap in TLS if protected
-		if s.prot == "P" {
-			if s.server.tlsConfig == nil {
-				conn.Close()
-				return nil, fmt.Errorf("TLS configuration missing")
-			}
-			// RFC 4217: The FTP server MUST act as the TLS server.
-			tlsConn := tls.Server(conn, s.server.tlsConfig)
-			if err := tlsConn.Handshake(); err != nil {
-				conn.Close()
-				return nil, err
-			}
-			conn = tlsConn
-		}
-
-		// Apply timeouts to data connection
-		if s.server.readTimeout > 0 {
-			_ = conn.SetReadDeadline(time.Now().Add(s.server.readTimeout))
-		}
-		if s.server.writeTimeout > 0 {
-			_ = conn.SetWriteDeadline(time.Now().Add(s.server.writeTimeout))
-		}
-
-		// Track data connection
-		s.server.trackConnection(conn, true)
-		return &trackingConn{Conn: conn, server: s.server}, nil
+		return s.connActive()
 	}
 
 	return nil, fmt.Errorf("no data connection setup")
+}
+
+func (s *session) connPassive() (net.Conn, error) {
+	s.server.logger.Debug("waiting for passive connection",
+		"session_id", s.sessionID,
+		"remote_ip", s.remoteIP,
+	)
+	// Set a deadline for the client to connect
+	if t, ok := s.pasvList.(*net.TCPListener); ok {
+		_ = t.SetDeadline(time.Now().Add(10 * time.Second))
+	}
+	conn, err := s.pasvList.Accept()
+	if err != nil {
+		return nil, err
+	}
+	s.pasvList.Close()
+	s.pasvList = nil
+
+	return s.wrapDataConn(conn)
+}
+
+func (s *session) connActive() (net.Conn, error) {
+	addr := net.JoinHostPort(s.activeIP, strconv.Itoa(s.activePort))
+	s.server.logger.Debug("dialing active connection",
+		"session_id", s.sessionID,
+		"remote_ip", s.remoteIP,
+		"addr", addr,
+	)
+	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	s.activeIP = "" // Reset after use
+
+	return s.wrapDataConn(conn)
+}
+
+func (s *session) wrapDataConn(conn net.Conn) (net.Conn, error) {
+	// Wrap in TLS if protected
+	if s.prot == "P" {
+		if s.server.tlsConfig == nil {
+			conn.Close()
+			return nil, fmt.Errorf("TLS configuration missing")
+		}
+		// RFC 4217: The FTP server MUST act as the TLS server.
+		tlsConn := tls.Server(conn, s.server.tlsConfig)
+		if err := tlsConn.Handshake(); err != nil {
+			conn.Close()
+			return nil, err
+		}
+		conn = tlsConn
+	}
+
+	// Apply timeouts to data connection
+	if s.server.readTimeout > 0 {
+		_ = conn.SetReadDeadline(time.Now().Add(s.server.readTimeout))
+	}
+	if s.server.writeTimeout > 0 {
+		_ = conn.SetWriteDeadline(time.Now().Add(s.server.writeTimeout))
+	}
+
+	// Track data connection
+	s.server.trackConnection(conn, true)
+	return &trackingConn{Conn: conn, server: s.server}, nil
 }
 
 // replyError sends a standard error response based on the error type.

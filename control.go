@@ -58,89 +58,93 @@ func (r *Response) String() string {
 //
 // The response is complete when a line starts with the code followed by a space.
 func readResponse(r *bufio.Reader) (*Response, error) {
-	var lines []string
-	var code int
-	var firstLine = true
+	// Read the first line
+	line, err := r.ReadString('\n')
+	if err != nil {
+		return nil, err
+	}
+
+	line = strings.TrimRight(line, "\r\n")
+	if len(line) < 4 {
+		return nil, fmt.Errorf("invalid response line: %q", line)
+	}
+
+	code, err := strconv.Atoi(line[0:3])
+	if err != nil {
+		return nil, fmt.Errorf("invalid response code: %q", line[0:3])
+	}
+
+	lines := []string{line}
+
+	// Optimization for common single-line response
+	if line[3] == ' ' {
+		return &Response{
+			Code:    code,
+			Message: line[4:],
+			Lines:   lines,
+		}, nil
+	}
+
+	// Multi-line response must start with '-'
+	if line[3] != '-' {
+		return nil, fmt.Errorf("invalid response format: %q", line)
+	}
+
+	// Read remaining lines
+	if err := readMultiLine(r, code, &lines); err != nil {
+		return nil, err
+	}
+
+	// Build the message
+	var messageLines []string
+	for _, l := range lines {
+		if len(l) > 4 {
+			messageLines = append(messageLines, l[4:])
+		}
+	}
+
+	return &Response{
+		Code:    code,
+		Message: strings.Join(messageLines, "\n"),
+		Lines:   lines,
+	}, nil
+}
+
+func readMultiLine(r *bufio.Reader, code int, lines *[]string) error {
+	codeStr := fmt.Sprintf("%03d", code)
 
 	for {
 		line, err := r.ReadString('\n')
 		if err != nil {
-			if err == io.EOF && len(lines) > 0 {
-				// Server closed connection after partial response
-				return nil, fmt.Errorf("unexpected EOF reading response")
+			if err == io.EOF && len(*lines) > 0 {
+				return fmt.Errorf("unexpected EOF reading response")
 			}
-			return nil, err
+			return err
 		}
 
-		// Remove trailing \r\n
 		line = strings.TrimRight(line, "\r\n")
 
-		// Parse the code from the first line
-		if firstLine {
-			if len(line) < 4 {
-				return nil, fmt.Errorf("invalid response line: %q", line)
-			}
-			parsedCode, err := strconv.Atoi(line[0:3])
-			if err != nil {
-				return nil, fmt.Errorf("invalid response code: %q", line[0:3])
-			}
-			code = parsedCode
-			firstLine = false
+		// Check for RFC 2389 continuation (starts with space)
+		if len(line) > 0 && line[0] == ' ' {
+			*lines = append(*lines, line)
+			continue
+		}
 
-			lines = append(lines, line)
+		// Standard continuation or end line
+		if len(line) < 4 || line[0:3] != codeStr {
+			return fmt.Errorf("response code mismatch or invalid line: %q", line)
+		}
 
-			// Check if this is a single-line response (code followed by space)
-			if len(line) >= 4 && line[3] == ' ' {
-				break
-			}
+		*lines = append(*lines, line)
 
-			// Multi-line responses have a dash after the code
-			if len(line) >= 4 && line[3] != '-' {
-				return nil, fmt.Errorf("invalid response format: %q", line)
-			}
-		} else {
-			// Subsequent lines in multi-line responses can either:
-			// 1. Start with the code (e.g., "211-..." or "211 ...")
-			// 2. Start with a space (RFC 2389 FEAT format)
-			if len(line) > 0 && line[0] == ' ' {
-				// RFC 2389 format: content line starting with space
-				lines = append(lines, line)
-			} else if len(line) >= 4 {
-				// Standard format: line starts with response code
-				if line[0:3] != fmt.Sprintf("%03d", code) {
-					return nil, fmt.Errorf("response code mismatch: expected %d, got %s", code, line[0:3])
-				}
-				lines = append(lines, line)
+		if line[3] == ' ' {
+			return nil // End of response
+		}
 
-				// Check if this is the last line (code followed by space)
-				if line[3] == ' ' {
-					break
-				}
-
-				// Multi-line continuation has a dash after the code
-				if line[3] != '-' {
-					return nil, fmt.Errorf("invalid response format: %q", line)
-				}
-			} else {
-				return nil, fmt.Errorf("invalid response line: %q", line)
-			}
+		if line[3] != '-' {
+			return fmt.Errorf("invalid response format: %q", line)
 		}
 	}
-
-	// Build the message by joining all lines and removing the code prefix
-	var messageLines []string
-	for _, line := range lines {
-		if len(line) > 4 {
-			messageLines = append(messageLines, line[4:])
-		}
-	}
-	message := strings.Join(messageLines, "\n")
-
-	return &Response{
-		Code:    code,
-		Message: message,
-		Lines:   lines,
-	}, nil
 }
 
 // sendCommand sends an FTP command and returns the response.
