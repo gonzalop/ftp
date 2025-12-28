@@ -349,12 +349,15 @@ func (c *Client) openPassiveDataConn() (net.Conn, error) {
 
 	// Try EPSV
 	if !c.disableEPSV {
-		resp, err := c.sendCommand("EPSV")
-		if err == nil && resp.Is2xx() {
-			port, parseErr := parseEPSV(resp.String())
-			if parseErr == nil {
-				// Use the same host as the control connection
-				addr = net.JoinHostPort(c.host, port)
+		if resp, err := c.sendCommand("EPSV"); err == nil {
+			if resp.Code == 502 { // 502 = Not implemented
+				c.disableEPSV = true
+			} else if resp.Is2xx() {
+				port, parseErr := parseEPSV(resp.String())
+				if parseErr == nil {
+					// Use the same host as the control connection
+					addr = net.JoinHostPort(c.host, port)
+				}
 			}
 		}
 	}
