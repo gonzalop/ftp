@@ -110,6 +110,7 @@ Both client and server implement modern FTP standards:
 - **RFC 3659** - Extensions (MLST/MLSD, SIZE, MDTM, REST)
 - **RFC 4217** - Securing FTP with TLS
 - **RFC 5797** - FTP Command Registry
+- **RFC 7151** - File Transfer Protocol HOST Command
 
 **Detailed compliance matrices:**
 - [Client Compliance →](docs/client-compliance.md)

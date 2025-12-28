@@ -6,7 +6,6 @@ import (
 	"net"
 	"regexp"
 	"strconv"
-	"sync/atomic"
 	"time"
 )
 
@@ -420,14 +419,18 @@ func (c *Client) cmdDataConnFrom(cmd string, args ...string) (*Response, net.Con
 		return nil, nil, err
 	}
 
-	// Mark transfer as in progress
-	atomic.StoreInt32(&c.transferInProgress, 1)
+	// Mark transfer as in progress and track the connection
+	c.mu.Lock()
+	c.activeDataConn = dataConn
+	c.mu.Unlock()
 
 	// Send the command
 	resp, err := c.sendCommand(cmd, args...)
 	if err != nil {
 		dataConn.Close()
-		atomic.StoreInt32(&c.transferInProgress, 0)
+		c.mu.Lock()
+		c.activeDataConn = nil
+		c.mu.Unlock()
 		return nil, nil, err
 	}
 
@@ -439,7 +442,9 @@ func (c *Client) cmdDataConnFrom(cmd string, args ...string) (*Response, net.Con
 		// We'll be lenient and accept both
 		if resp.Code < 100 || resp.Code >= 400 {
 			dataConn.Close()
-			atomic.StoreInt32(&c.transferInProgress, 0)
+			c.mu.Lock()
+			c.activeDataConn = nil
+			c.mu.Unlock()
 			return resp, nil, &ProtocolError{
 				Command:  cmd,
 				Response: resp.Message,
@@ -477,7 +482,9 @@ func (c *Client) finishDataConn(dataConn net.Conn) error {
 	}
 
 	// Mark transfer as complete
-	atomic.StoreInt32(&c.transferInProgress, 0)
+	c.mu.Lock()
+	c.activeDataConn = nil
+	c.mu.Unlock()
 
 	if !resp.Is2xx() {
 		return &ProtocolError{

@@ -10,7 +10,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -69,8 +68,8 @@ type Client struct {
 	// quitChan signals the keep-alive goroutine to stop
 	quitChan chan struct{}
 
-	// transferInProgress indicates if a data transfer is active (atomic)
-	transferInProgress int32
+	// activeDataConn tracks the currently active data connection
+	activeDataConn net.Conn
 }
 
 // Dial connects to an FTP server at the given address.
@@ -149,6 +148,50 @@ func Dial(addr string, options ...Option) (*Client, error) {
 	c.startKeepAlive()
 
 	return c, nil
+}
+
+// startKeepAlive starts a goroutine that sends NOOP commands
+// if the connection has been idle for the configured idleTimeout.
+func (c *Client) startKeepAlive() {
+	if c.idleTimeout == 0 {
+		return
+	}
+
+	c.quitChan = make(chan struct{})
+
+	// We use a ticker that runs at half the idle timeout to be safe
+	ticker := time.NewTicker(c.idleTimeout / 2)
+
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				// Skip if a data transfer is in progress
+				c.mu.Lock()
+				transferring := c.activeDataConn != nil
+				c.mu.Unlock()
+				if transferring {
+					continue
+				}
+
+				c.mu.Lock()
+				last := c.lastCommand
+				c.mu.Unlock()
+
+				// If time since last command is greater than idle timeout, send NOOP
+				if time.Since(last) >= c.idleTimeout {
+					if c.logger != nil {
+						c.logger.Debug("sending keep-alive NOOP")
+					}
+					// Ignore errors (connection might be closed)
+					_ = c.Noop()
+				}
+			case <-c.quitChan:
+				return
+			}
+		}
+	}()
 }
 
 // Connect connects to an FTP server using a URL.
@@ -389,6 +432,7 @@ func (c *Client) Login(username, password string) error {
 }
 
 // Quit closes the connection gracefully by sending the QUIT command.
+// If a file transfer is in progress, it will be aborted by closing the data connection.
 func (c *Client) Quit() error {
 	if c.conn == nil {
 		return nil
@@ -398,6 +442,14 @@ func (c *Client) Quit() error {
 	if c.quitChan != nil {
 		close(c.quitChan)
 	}
+
+	// Abort active transfer if any
+	c.mu.Lock()
+	if c.activeDataConn != nil {
+		c.activeDataConn.Close()
+		c.activeDataConn = nil
+	}
+	c.mu.Unlock()
 
 	// Send QUIT command (ignore errors, we're closing anyway)
 	_, _ = c.sendCommand("QUIT")
@@ -582,7 +634,11 @@ func (c *Client) Quote(command string, args ...string) (*Response, error) {
 // Abort cancels an active file transfer.
 // It sends the ABOR command to the server if there's an ongoing transfer.
 func (c *Client) Abort() error {
-	if atomic.LoadInt32(&c.transferInProgress) == 0 {
+	c.mu.Lock()
+	hasTransfer := c.activeDataConn != nil
+	c.mu.Unlock()
+
+	if !hasTransfer {
 		return fmt.Errorf("(local) No transfer in progress")
 	}
 

@@ -275,6 +275,8 @@ fmt.Printf("Remote system: %s\n", sys)
 err := client.Abort()
 ```
 
+Note: Calling `Quit()` will also actively abort any in-progress transfer by closing the data connection before the control connection.
+
 ### Raw Commands (Quote)
 
 ```go

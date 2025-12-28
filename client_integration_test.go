@@ -9,11 +9,15 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
+	"io"
+	"log"
 	"log/slog"
 	"math/big"
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -796,6 +800,7 @@ func TestClient_Integration(t *testing.T) {
 				break
 			}
 		}
+
 		if !found {
 			t.Error("MLList did not find progress.txt")
 		}
@@ -1225,4 +1230,751 @@ func TestConnect_FTPExplicit(t *testing.T) {
 		t.Fatal("Expected FTP+Explicit connect to fail with self-signed cert, but it succeeded")
 	}
 	t.Logf("Got expected error: %v", err)
+}
+
+// SlowReader delays reading to simulate a slow source (upload)
+type SlowReader struct {
+	r     io.Reader
+	delay time.Duration
+}
+
+func (s *SlowReader) Read(p []byte) (n int, err error) {
+	time.Sleep(s.delay)
+	max := 1024
+	if len(p) > max {
+		p = p[:max]
+	}
+	return s.r.Read(p)
+}
+
+func TestClient_QuitAbortsTransfer(t *testing.T) {
+	addr, cleanup, _ := setupServer(t)
+	defer cleanup()
+
+	c, err := ftp.Dial(addr, ftp.WithTimeout(5*time.Second))
+	if err != nil {
+		t.Fatalf("Failed to dial: %v", err)
+	}
+
+	if err := c.Login("anonymous", "anonymous"); err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+
+	// Create a source with plenty of data
+	// 50 chunks * 50ms delay = 2.5s minimum duration
+	chunkSize := 1024
+	chunks := 50
+	content := bytes.Repeat([]byte("x"), chunkSize*chunks)
+
+	sr := &SlowReader{
+		r:     bytes.NewReader(content),
+		delay: 50 * time.Millisecond,
+	}
+
+	// Channel to signal upload completion
+	doneCh := make(chan error)
+
+	go func() {
+		// Store (Upload) will read from sr and write to data connection.
+		// It will block on sr.Read.
+		// When Quit closes connection, the subsequent Write to dataConn will fail.
+		err := c.Store("upload.txt", sr)
+		doneCh <- err
+	}()
+
+	// Wait a bit to ensure transfer has started
+	time.Sleep(500 * time.Millisecond)
+
+	// Call Quit from the main goroutine
+	t.Log("Calling Quit...")
+	startQuit := time.Now()
+	if err := c.Quit(); err != nil {
+		t.Logf("Quit returned error: %v", err)
+	} else {
+		t.Log("Quit returned nil")
+	}
+
+	// Wait for Store to return
+	select {
+	case err := <-doneCh:
+		elapsed := time.Since(startQuit)
+		t.Logf("Store returned after %v with error: %v", elapsed, err)
+
+		if err == nil {
+			t.Error("Store returned nil error, expected error due to abortion")
+		} else {
+			// Expected error: "use of closed network connection" or similar
+			t.Logf("Store error (expected): %v", err)
+		}
+
+	case <-time.After(2 * time.Second):
+		t.Fatal("Store timed out (did not abort)")
+	}
+}
+
+func TestConnect(t *testing.T) {
+	// Start a test server with permissive auth
+	rootDir := t.TempDir()
+	driver, err := server.NewFSDriver(rootDir, server.WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		return rootDir, false, nil // false = write access
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Use a manual listener to get the random port
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+
+	s, err := server.NewServer(addr, server.WithDriver(driver))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run server in background
+	go func() {
+		if err := s.Serve(ln); err != nil && err != server.ErrServerClosed {
+			// potentially log error, but might conflict with test shutdown
+			t.Logf("Serve error: %v", err)
+		}
+	}()
+	defer func() { _ = s.Shutdown(context.Background()) }()
+
+	// Wait for server to be ready (listener is already open)
+	time.Sleep(100 * time.Millisecond)
+
+	t.Run("FTP scheme", func(t *testing.T) {
+		url := "ftp://" + addr
+		c, err := ftp.Connect(url)
+		if err != nil {
+			t.Fatalf("Connect failed: %v", err)
+		}
+		defer func() { _ = c.Quit() }()
+
+		if err := c.Noop(); err != nil {
+			t.Errorf("Noop failed: %v", err)
+		}
+	})
+
+	t.Run("FTP scheme with user info", func(t *testing.T) {
+		url := "ftp://anonymous:ftp@" + addr
+		c, err := ftp.Connect(url)
+		if err != nil {
+			t.Fatalf("Connect failed: %v", err)
+		}
+		defer func() { _ = c.Quit() }()
+
+		if err := c.Noop(); err != nil {
+			t.Errorf("Noop failed: %v", err)
+		}
+	})
+
+	t.Run("FTP scheme with path", func(t *testing.T) {
+		// Create a subdirectory directly
+		subdir := filepath.Join(rootDir, "subdir")
+		if err := os.Mkdir(subdir, 0755); err != nil {
+			t.Fatalf("os.Mkdir failed: %v", err)
+		}
+
+		url := "ftp://" + addr + "/subdir"
+		c, err := ftp.Connect(url)
+		if err != nil {
+			t.Fatalf("Connect failed: %v", err)
+		}
+		defer func() { _ = c.Quit() }()
+
+		pwd, err := c.CurrentDir()
+		if err != nil {
+			t.Fatalf("CurrentDir failed: %v", err)
+		}
+
+		if pwd != "/subdir" {
+			t.Errorf("Expected path /subdir, got %s", pwd)
+		}
+	})
+}
+
+func TestUploadDownloadFile(t *testing.T) {
+	rootDir := t.TempDir()
+	driver, err := server.NewFSDriver(rootDir, server.WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		return rootDir, false, nil // Write access
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+
+	s, err := server.NewServer(addr, server.WithDriver(driver))
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = s.Serve(ln) }()
+	defer func() { _ = s.Shutdown(context.Background()) }()
+	time.Sleep(100 * time.Millisecond)
+
+	client, err := ftp.Dial(addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = client.Quit() }()
+
+	if err := client.Login("anonymous", "ftp"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a local file
+	localContent := []byte("hello world")
+	localPath := filepath.Join(t.TempDir(), "local.txt")
+	if err := os.WriteFile(localPath, localContent, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Test UploadFile
+	if err := client.UploadFile(localPath, "remote.txt"); err != nil {
+		t.Fatalf("UploadFile failed: %v", err)
+	}
+
+	// Verify content on server
+	serverContent, err := os.ReadFile(filepath.Join(rootDir, "remote.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(serverContent) != string(localContent) {
+		t.Errorf("Server content mismatch: got %s, want %s", serverContent, localContent)
+	}
+
+	// Test DownloadFile
+	downloadPath := filepath.Join(t.TempDir(), "download.txt")
+	if err := client.DownloadFile("remote.txt", downloadPath); err != nil {
+		t.Fatalf("DownloadFile failed: %v", err)
+	}
+
+	// Verify local content
+	downloadedContent, err := os.ReadFile(downloadPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(downloadedContent) != string(localContent) {
+		t.Errorf("Downloaded content mismatch: got %s, want %s", downloadedContent, localContent)
+	}
+}
+
+func TestRecursiveHelpers(t *testing.T) {
+	// Start server
+	addr, s, rootDir := startServer(t)
+	defer func() {
+		if err := s.Shutdown(context.Background()); err != nil {
+			t.Logf("Shutdown error: %v", err)
+		}
+	}()
+
+	// Connect
+	c, err := ftp.Dial(addr)
+	if err != nil {
+		t.Fatalf("Dial failed: %v", err)
+	}
+	defer func() {
+		if err := c.Quit(); err != nil {
+			t.Logf("Quit error: %v", err)
+		}
+	}()
+
+	if err := c.Login("anonymous", "anonymous"); err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+
+	// 1. Test UploadDir
+	t.Run("UploadDir", func(t *testing.T) {
+		// Create local source dir
+		srcDir := t.TempDir()
+		createTestStructure(t, srcDir)
+
+		// Create a symlink that should be ignored
+		// Pointing to a file outside the upload Root would be the security concern,
+		// but even internal ones should be skipped by default.
+		secretFile := filepath.Join(t.TempDir(), "secret.txt")
+		if err := os.WriteFile(secretFile, []byte("secret"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(secretFile, filepath.Join(srcDir, "ignore_me.link")); err != nil {
+			t.Fatal(err)
+		}
+
+		// Upload to remote
+		remoteDest := "/uploaded"
+		if err := c.UploadDir(srcDir, remoteDest); err != nil {
+			t.Fatalf("UploadDir failed: %v", err)
+		}
+
+		// Verify on server disk
+		localDest := filepath.Join(rootDir, "uploaded")
+		verifyStructure(t, srcDir, localDest)
+
+		// Ensure symlink was NOT uploaded
+		if _, err := os.Stat(filepath.Join(localDest, "ignore_me.link")); err == nil {
+			t.Error("Symlink was uploaded but should have been skipped")
+		}
+	})
+
+	// 2. Test Walk
+	t.Run("Walk", func(t *testing.T) {
+		// We already have /uploaded structure on server.
+		// Let's walk it.
+
+		expectedPaths := []string{
+			"/uploaded",
+			"/uploaded/file1.txt",
+			"/uploaded/subdir",
+			"/uploaded/subdir/file2.txt",
+			"/uploaded/subdir/nested",
+			"/uploaded/subdir/nested/file3.txt",
+		}
+		sort.Strings(expectedPaths)
+
+		var visited []string
+		err := c.Walk("/uploaded", func(path string, info *ftp.Entry, err error) error {
+			if err != nil {
+				return err
+			}
+			visited = append(visited, path)
+			return nil
+		})
+
+		if err != nil {
+			t.Fatalf("Walk failed: %v", err)
+		}
+
+		sort.Strings(visited)
+
+		if len(visited) != len(expectedPaths) {
+			t.Fatalf("Verify visited count: got %d, want %d\nGot: %v\nWant: %v", len(visited), len(expectedPaths), visited, expectedPaths)
+		}
+
+		for i, p := range visited {
+			if p != expectedPaths[i] {
+				t.Errorf("Path mismatch at %d: got %s, want %s", i, p, expectedPaths[i])
+			}
+		}
+	})
+
+	// 3. Test DownloadDir
+	t.Run("DownloadDir", func(t *testing.T) {
+		destDir := t.TempDir()
+
+		if err := c.DownloadDir("/uploaded", destDir); err != nil {
+			t.Fatalf("DownloadDir failed: %v", err)
+		}
+
+		// Verify local disk matches server disk
+		serverPath := filepath.Join(rootDir, "uploaded")
+		verifyStructure(t, serverPath, destDir)
+	})
+}
+
+func startServer(t *testing.T) (string, *server.Server, string) {
+	rootDir := t.TempDir()
+
+	driver, err := server.NewFSDriver(rootDir,
+		server.WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+			return rootDir, false, nil
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := server.NewServer(ln.Addr().String(), server.WithDriver(driver))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	go func() {
+		if err := s.Serve(ln); err != nil {
+			// Serve returns ErrServerClosed on shutdown, which we can ignore or log.
+			// But since we don't have access to ErrServerClosed easily without import,
+			// and this is a test helper, simple logging is fine.
+			// Ideally we would check for the specific error.
+			t.Logf("Serve error: %v", err)
+		}
+	}()
+
+	return ln.Addr().String(), s, rootDir
+}
+
+func createTestStructure(t *testing.T, dir string) {
+	// file1.txt
+	if err := os.WriteFile(filepath.Join(dir, "file1.txt"), []byte("content1"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// subdir/
+	if err := os.Mkdir(filepath.Join(dir, "subdir"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	// subdir/file2.txt
+	if err := os.WriteFile(filepath.Join(dir, "subdir", "file2.txt"), []byte("content2"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// subdir/nested/
+	if err := os.Mkdir(filepath.Join(dir, "subdir", "nested"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	// subdir/nested/file3.txt
+	if err := os.WriteFile(filepath.Join(dir, "subdir", "nested", "file3.txt"), []byte("content3"), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func verifyStructure(t *testing.T, srcDir, dstDir string) {
+	err := filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip symlinks in verification since they are not uploaded
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil
+		}
+
+		rel, _ := filepath.Rel(srcDir, path)
+		dstPath := filepath.Join(dstDir, rel)
+
+		dstInfo, err := os.Stat(dstPath)
+		if err != nil {
+			return fmt.Errorf("missing in dest: %s (%v)", rel, err)
+		}
+
+		if info.IsDir() {
+			if !dstInfo.IsDir() {
+				return fmt.Errorf("expected dir at %s", rel)
+			}
+		} else {
+			if dstInfo.IsDir() {
+				return fmt.Errorf("expected file at %s", rel)
+			}
+			if info.Size() != dstInfo.Size() {
+				return fmt.Errorf("size mismatch at %s: %d vs %d", rel, info.Size(), dstInfo.Size())
+			}
+			// Verify content
+			s, _ := os.ReadFile(path)
+			d, _ := os.ReadFile(dstPath)
+			if !bytes.Equal(s, d) {
+				return fmt.Errorf("content mismatch at %s", rel)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Errorf("Verification failed: %v", err)
+	}
+}
+
+// ExampleDial demonstrates connecting to a plain FTP server.
+func ExampleDial() {
+	client, err := ftp.Dial("ftp.example.com:21")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = client.Quit() }()
+
+	if err := client.Login("username", "password"); err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("Connected successfully")
+}
+
+// ExampleDial_explicitTLS demonstrates connecting with explicit TLS.
+func ExampleDial_explicitTLS() {
+	client, err := ftp.Dial("ftp.example.com:21",
+		ftp.WithExplicitTLS(&tls.Config{
+			ServerName: "ftp.example.com",
+		}),
+		ftp.WithTimeout(10*time.Second),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = client.Quit() }()
+
+	if err := client.Login("username", "password"); err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("Connected with TLS")
+}
+
+// ExampleDial_implicitTLS demonstrates connecting with implicit TLS.
+func ExampleDial_implicitTLS() {
+	client, err := ftp.Dial("ftp.example.com:990",
+		ftp.WithImplicitTLS(&tls.Config{
+			ServerName: "ftp.example.com",
+		}),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = client.Quit() }()
+
+	if err := client.Login("username", "password"); err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("Connected with implicit TLS")
+}
+
+// ExampleClient_Store demonstrates uploading a file.
+func ExampleClient_Store() {
+	client, err := ftp.Dial("ftp.example.com:21")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = client.Quit() }()
+
+	if err := client.Login("username", "password"); err != nil {
+		log.Fatal(err)
+	}
+
+	file, err := os.Open("local.txt")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	if err := client.Store("remote.txt", file); err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("Upload complete")
+}
+
+// ExampleClient_Retrieve demonstrates downloading a file with progress tracking.
+func ExampleClient_Retrieve() {
+	client, err := ftp.Dial("ftp.example.com:21")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = client.Quit() }()
+
+	if err := client.Login("username", "password"); err != nil {
+		log.Fatal(err)
+	}
+
+	file, err := os.Create("local.txt")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	// Wrap the writer with progress tracking
+	pw := &ftp.ProgressWriter{
+		Writer: file,
+		Callback: func(bytesTransferred int64) {
+			fmt.Printf("Downloaded: %d bytes\n", bytesTransferred)
+		},
+	}
+
+	if err := client.Retrieve("remote.txt", pw); err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("Download complete")
+}
+
+// ExampleClient_List demonstrates listing directory contents.
+func ExampleClient_List() {
+	client, err := ftp.Dial("ftp.example.com:21")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = client.Quit() }()
+
+	if err := client.Login("username", "password"); err != nil {
+		log.Fatal(err)
+	}
+
+	entries, err := client.List("/pub")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, entry := range entries {
+		fmt.Printf("%s (%s)\n", entry.Name, entry.Type)
+	}
+}
+
+// ExampleClient_MakeDir demonstrates creating a directory.
+func ExampleClient_MakeDir() {
+	client, err := ftp.Dial("ftp.example.com:21")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = client.Quit() }()
+
+	if err := client.Login("username", "password"); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := client.MakeDir("newdir"); err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("Directory created")
+}
+
+// ExampleClient_Features demonstrates querying server capabilities.
+func ExampleClient_Features() {
+	client, err := ftp.Dial("ftp.example.com:21")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = client.Quit() }()
+
+	if err := client.Login("username", "password"); err != nil {
+		log.Fatal(err)
+	}
+
+	features, err := client.Features()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for feat, params := range features {
+		if params != "" {
+			fmt.Printf("%s: %s\n", feat, params)
+		} else {
+			fmt.Println(feat)
+		}
+	}
+}
+
+// ExampleClient_HasFeature demonstrates checking for specific features.
+func ExampleClient_HasFeature() {
+	client, err := ftp.Dial("ftp.example.com:21")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = client.Quit() }()
+
+	if err := client.Login("username", "password"); err != nil {
+		log.Fatal(err)
+	}
+
+	if client.HasFeature("MDTM") {
+		fmt.Println("Server supports file modification times")
+	}
+
+	if client.HasFeature("MLST") {
+		fmt.Println("Server supports machine-readable listings")
+	}
+}
+
+// ExampleClient_ModTime demonstrates getting file modification time.
+func ExampleClient_ModTime() {
+	client, err := ftp.Dial("ftp.example.com:21")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = client.Quit() }()
+
+	if err := client.Login("username", "password"); err != nil {
+		log.Fatal(err)
+	}
+
+	modTime, err := client.ModTime("file.txt")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("Last modified: %s\n", modTime)
+}
+
+// ExampleClient_MLList demonstrates machine-readable directory listing.
+func ExampleClient_MLList() {
+	client, err := ftp.Dial("ftp.example.com:21")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = client.Quit() }()
+
+	if err := client.Login("username", "password"); err != nil {
+		log.Fatal(err)
+	}
+
+	entries, err := client.MLList("/pub")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, entry := range entries {
+		fmt.Printf("%s: %d bytes, modified %s\n",
+			entry.Name, entry.Size, entry.ModTime)
+	}
+}
+
+// ExampleClient_RetrieveFrom demonstrates resuming a download.
+func ExampleClient_RetrieveFrom() {
+	client, err := ftp.Dial("ftp.example.com:21")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = client.Quit() }()
+
+	if err := client.Login("username", "password"); err != nil {
+		log.Fatal(err)
+	}
+
+	// Open file in append mode
+	file, err := os.OpenFile("large.bin", os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	// Get current file size to resume from
+	info, err := file.Stat()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Resume download from current position
+	if err := client.RetrieveFrom("large.bin", file, info.Size()); err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("Download resumed and completed")
+}
+
+// ExampleClient_SetOption demonstrates setting server options.
+func ExampleClient_SetOption() {
+	client, err := ftp.Dial("ftp.example.com:21")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = client.Quit() }()
+
+	if err := client.Login("username", "password"); err != nil {
+		log.Fatal(err)
+	}
+
+	// Enable UTF8 mode if supported
+	if client.HasFeature("UTF8") {
+		if err := client.SetOption("UTF8", "ON"); err != nil {
+			log.Printf("Failed to enable UTF8: %v", err)
+		} else {
+			fmt.Println("UTF8 mode enabled")
+		}
+	}
 }
