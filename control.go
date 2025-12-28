@@ -159,7 +159,11 @@ func (c *Client) sendCommand(command string, args ...string) (*Response, error) 
 
 	// Log if debug is enabled
 	if c.logger != nil {
-		c.logger.Debug("ftp command", "cmd", cmd)
+		altCmd := cmd
+		if strings.HasPrefix(cmd, "PASS ") {
+			altCmd = "PASS xxxx"
+		}
+		c.logger.Debug("ftp command", "cmd", altCmd)
 	}
 
 	// Lock the client to prevent concurrent commands
