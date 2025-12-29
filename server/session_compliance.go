@@ -9,7 +9,7 @@ import (
 
 // handleACCT handles the ACCT command.
 // RFC 1123 requires this command, but most modern servers don't need it.
-func (s *session) handleACCT(arg string) {
+func (s *session) handleACCT(_ string) {
 	s.reply(202, "Command not implemented, superfluous at this site.")
 }
 

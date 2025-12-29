@@ -49,7 +49,7 @@ func (s *session) handlePROT(arg string) {
 	}
 }
 
-func (s *session) handlePBSZ(arg string) {
+func (s *session) handlePBSZ(_ string) {
 	if s.server.tlsConfig == nil {
 		s.reply(502, "TLS not configured.")
 		return
