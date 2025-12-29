@@ -227,6 +227,12 @@ func (s *session) serve() {
 		s.reply(220, s.server.welcomeMessage)
 	}
 
+	// Security audit: session started
+	s.server.logger.Info("session_started",
+		"session_id", s.sessionID,
+		"remote_ip", s.redactIP(s.remoteIP),
+	)
+
 	done := make(chan struct{})
 	defer close(done)
 

@@ -149,6 +149,17 @@ func (s *session) handleSITE(arg string) {
 			s.replyError(err)
 			return
 		}
+
+		// Security audit: permissions changed
+		s.server.logger.Info("permissions_changed",
+			"session_id", s.sessionID,
+			"remote_ip", s.redactIP(s.remoteIP),
+			"user", s.user,
+			"host", s.host,
+			"path", s.redactPath(path),
+			"mode", fmt.Sprintf("%04o", mode),
+		)
+
 		s.reply(200, "SITE CHMOD command successful.")
 
 	default:

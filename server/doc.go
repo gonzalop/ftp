@@ -191,22 +191,32 @@
 //
 // Security Audit Events:
 //
+// Session Lifecycle (INFO level):
+//
+//INFO session_started session_id=abc123 remote_ip=192.168.1.100
+//
 // Authentication (INFO/WARN level):
 //
-//	INFO authentication_success session_id=abc123 remote_ip=192.168.1.100 user=john
-//	WARN authentication_failed session_id=abc123 remote_ip=192.168.1.100 user=john reason="invalid password"
+//INFO authentication_success session_id=abc123 remote_ip=192.168.1.100 user=john
+//WARN authentication_failed session_id=abc123 remote_ip=192.168.1.100 user=john reason="invalid password"
 //
 // File Operations (INFO level):
 //
-//	INFO file_uploaded session_id=abc123 remote_ip=192.168.1.100 user=john path=/documents/report.pdf
-//	INFO file_deleted session_id=abc123 remote_ip=192.168.1.100 user=john path=/old/file.txt
-//	INFO directory_created session_id=abc123 remote_ip=192.168.1.100 user=john path=/new_folder
-//	INFO directory_removed session_id=abc123 remote_ip=192.168.1.100 user=john path=/temp
+//INFO file_deleted session_id=abc123 remote_ip=192.168.1.100 user=john path=/old/file.txt
+//INFO file_renamed session_id=abc123 remote_ip=192.168.1.100 user=john from=/old.txt to=/new.txt
+//INFO directory_created session_id=abc123 remote_ip=192.168.1.100 user=john path=/new_folder
+//INFO directory_removed session_id=abc123 remote_ip=192.168.1.100 user=john path=/temp
+//INFO permissions_changed session_id=abc123 remote_ip=192.168.1.100 user=john path=/file.txt mode=0644
+//INFO modification_time_changed session_id=abc123 remote_ip=192.168.1.100 user=john path=/file.txt time=20240101120000
+//
+// Transfer Operations (INFO level):
+//
+//INFO transfer_complete session_id=abc123 remote_ip=192.168.1.100 user=john operation=RETR path=/file.pdf bytes=1024 duration_ms=50 throughput_mbps=163.84
 //
 // Connection Events (WARN level):
 //
-//	WARN connection_rejected remote_ip=192.168.1.100 reason=global_limit_reached limit=100
-//	WARN connection_rejected remote_ip=192.168.1.100 reason=per_ip_limit_reached limit=10
+//WARN connection_rejected remote_ip=192.168.1.100 reason=global_limit_reached limit=100
+//WARN connection_rejected remote_ip=192.168.1.100 reason=per_ip_limit_reached limit=10
 //
 // Using session_id for correlation:
 //

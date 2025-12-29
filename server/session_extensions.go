@@ -60,6 +60,16 @@ func (s *session) handleMFMT(arg string) {
 		return
 	}
 
+	// Security audit: modification time changed
+	s.server.logger.Info("modification_time_changed",
+		"session_id", s.sessionID,
+		"remote_ip", s.redactIP(s.remoteIP),
+		"user", s.user,
+		"host", s.host,
+		"path", s.redactPath(path),
+		"time", timeStr,
+	)
+
 	// Response format: "Modify=YYYYMMDDHHMMSS; /path"
 	s.reply(213, fmt.Sprintf("Modify=%s; %s", timeStr, path))
 }

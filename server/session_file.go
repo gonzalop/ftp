@@ -310,6 +310,16 @@ func (s *session) handleRNTO(path string) {
 		return
 	}
 
+	// Security audit: file renamed
+	s.server.logger.Info("file_renamed",
+		"session_id", s.sessionID,
+		"remote_ip", s.redactIP(s.remoteIP),
+		"user", s.user,
+		"host", s.host,
+		"from", s.redactPath(s.renameFrom),
+		"to", s.redactPath(path),
+	)
+
 	s.renameFrom = ""
 	s.reply(250, "Requested file action successful, file renamed.")
 }
