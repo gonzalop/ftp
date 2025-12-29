@@ -276,7 +276,7 @@ func (s *session) serve() {
 			if cmd.err != io.EOF && cmd.err.Error() != "command too long" {
 				s.server.logger.Warn("read error",
 					"session_id", s.sessionID,
-					"remote_ip", s.remoteIP,
+					"remote_ip", s.redactIP(s.remoteIP),
 					"user", s.user,
 					"error", cmd.err,
 				)
@@ -351,7 +351,7 @@ func (s *session) close() {
 	s.conn.Close()
 	s.server.logger.Debug("session closed",
 		"session_id", s.sessionID,
-		"remote_ip", s.remoteIP,
+		"remote_ip", s.redactIP(s.remoteIP),
 		"user", s.user,
 	)
 }
@@ -376,7 +376,7 @@ func (s *session) handleCommand(line string) {
 	}
 	s.server.logger.Debug("command received",
 		"session_id", s.sessionID,
-		"remote_ip", s.remoteIP,
+		"remote_ip", s.redactIP(s.remoteIP),
 		"user", s.user,
 		"cmd", cmd,
 		"arg", logArg,
@@ -435,7 +435,7 @@ func (s *session) handleCommand(line string) {
 	if err != nil {
 		s.server.logger.Error("command handling error",
 			"session_id", s.sessionID,
-			"remote_ip", s.remoteIP,
+			"remote_ip", s.redactIP(s.remoteIP),
 			"user", s.user,
 			"cmd", cmd,
 			"error", err,
@@ -586,7 +586,7 @@ func (s *session) connData() (net.Conn, error) {
 func (s *session) connPassive() (net.Conn, error) {
 	s.server.logger.Debug("waiting for passive connection",
 		"session_id", s.sessionID,
-		"remote_ip", s.remoteIP,
+		"remote_ip", s.redactIP(s.remoteIP),
 	)
 	// Set a deadline for the client to connect
 	if t, ok := s.pasvList.(*net.TCPListener); ok {
@@ -606,7 +606,7 @@ func (s *session) connActive() (net.Conn, error) {
 	addr := net.JoinHostPort(s.activeIP, strconv.Itoa(s.activePort))
 	s.server.logger.Debug("dialing active connection",
 		"session_id", s.sessionID,
-		"remote_ip", s.remoteIP,
+		"remote_ip", s.redactIP(s.remoteIP),
 		"addr", addr,
 	)
 	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)

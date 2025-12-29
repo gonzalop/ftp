@@ -16,7 +16,7 @@ func (s *session) handlePASS(pass string) error {
 		// Security audit: failed authentication
 		s.server.logger.Warn("authentication_failed",
 			"session_id", s.sessionID,
-			"remote_ip", s.remoteIP,
+			"remote_ip", s.redactIP(s.remoteIP),
 			"user", s.user,
 			"reason", err.Error(),
 		)
@@ -32,7 +32,7 @@ func (s *session) handlePASS(pass string) error {
 	// Security audit: successful authentication
 	s.server.logger.Info("authentication_success",
 		"session_id", s.sessionID,
-		"remote_ip", s.remoteIP,
+		"remote_ip", s.redactIP(s.remoteIP),
 		"user", s.user,
 	)
 	// Metrics collection
