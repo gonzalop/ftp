@@ -906,6 +906,33 @@ func testResumeOperations(t *testing.T, c *ftp.Client, rootDir string) {
 	if restBuf.String() != expectedRest {
 		t.Errorf("RestartAt + Retrieve content mismatch: got %q, want %q", restBuf.String(), expectedRest)
 	}
+
+	// 25. Test REST + STOR (resume upload with offset)
+	// First, create a partial file
+	partialUpload := "Partial"
+	if err := c.Store("rest_stor_test.txt", bytes.NewBufferString(partialUpload)); err != nil {
+		t.Fatal(err)
+	}
+
+	// Now resume from the end of the partial upload
+	resumeContent := " Resume"
+	if err := c.RestartAt(int64(len(partialUpload))); err != nil {
+		t.Errorf("RestartAt for STOR failed: %v", err)
+	}
+
+	if err := c.Store("rest_stor_test.txt", bytes.NewBufferString(resumeContent)); err != nil {
+		t.Errorf("STOR with REST failed: %v", err)
+	}
+
+	// Verify the file has both parts
+	resumedContent, err := os.ReadFile(filepath.Join(rootDir, "rest_stor_test.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedResumed := partialUpload + resumeContent
+	if string(resumedContent) != expectedResumed {
+		t.Errorf("REST + STOR content mismatch: got %q, want %q", string(resumedContent), expectedResumed)
+	}
 }
 
 func TestServerCoverage_AdditionalBranches(t *testing.T) {
@@ -1058,6 +1085,77 @@ func TestServerCoverage_NoAuth(t *testing.T) {
 		if resp.Code != 530 {
 			t.Errorf("%s without login expected 530, got %d", cmd, resp.Code)
 		}
+	}
+}
+
+func TestAuthenticationFailure(t *testing.T) {
+	rootDir := t.TempDir()
+
+	// Create driver with authenticator that validates passwords
+	driver, err := server.NewFSDriver(rootDir,
+		server.WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
+			// Only accept "anonymous" with password "anonymous"
+			if user == "anonymous" && pass == "anonymous" {
+				return rootDir, false, nil
+			}
+			return "", false, fmt.Errorf("authentication failed")
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := server.NewServer("127.0.0.1:0", server.WithDriver(driver))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	listener, err := SystemListener()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	go func() {
+		if err := s.Serve(listener); err != nil && err != server.ErrServerClosed {
+			t.Logf("Server stopped: %v", err)
+		}
+	}()
+
+	addr := listener.Addr().String()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = s.Shutdown(ctx)
+	}()
+
+	c, err := ftp.Dial(addr, ftp.WithTimeout(5*time.Second))
+	if err != nil {
+		t.Fatalf("Failed to dial: %v", err)
+	}
+	defer func() {
+		if err := c.Quit(); err != nil {
+			t.Logf("Quit failed: %v", err)
+		}
+	}()
+
+	// Test with wrong password
+	err = c.Login("anonymous", "wrongpassword")
+	if err == nil {
+		t.Fatal("Login should have failed with wrong password")
+	}
+
+	// Verify it's a protocol error with 530 code (not logged in)
+	if protocolErr, ok := err.(*ftp.ProtocolError); ok {
+		if protocolErr.Code != 530 {
+			t.Errorf("Expected error code 530, got %d", protocolErr.Code)
+		}
+	} else {
+		t.Errorf("Expected ProtocolError, got %T: %v", err, err)
+	}
+
+	// Verify we can still login with correct credentials after failure
+	if err := c.Login("anonymous", "anonymous"); err != nil {
+		t.Errorf("Login with correct password after failure should succeed: %v", err)
 	}
 }
 
