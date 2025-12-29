@@ -516,7 +516,6 @@ func TestClient_Integration(t *testing.T) {
 	addr, cleanup, rootDir := setupServer(t)
 	defer cleanup()
 
-	// Connect with Client
 	c, err := ftp.Dial(addr, ftp.WithTimeout(5*time.Second))
 	if err != nil {
 		t.Fatalf("Failed to dial: %v", err)
@@ -527,11 +526,23 @@ func TestClient_Integration(t *testing.T) {
 		}
 	}()
 
-	// Authenticate
 	if err := c.Login("anonymous", "anonymous"); err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
 
+	testBasicCommands(t, c, rootDir)
+	testFileOperations(t, c, rootDir)
+	testListingCommands(t, c, rootDir)
+	testMetadataCommands(t, c, rootDir)
+	testFeatureCommands(t, c)
+	testHashCommands(t, c)
+	testProgressTracking(t, c)
+	testMLCommands(t, c)
+	testFileTransferHelpers(t, c, rootDir)
+	testResumeOperations(t, c, rootDir)
+}
+
+func testBasicCommands(t *testing.T, c *ftp.Client, rootDir string) {
 	// 1. Test Noop
 	if err := c.Noop(); err != nil {
 		t.Errorf("Noop failed: %v", err)
@@ -545,7 +556,6 @@ func TestClient_Integration(t *testing.T) {
 	if syst == "" {
 		t.Error("Syst returned empty string")
 	}
-	// Default server name in this project is "UNIX Type: L8"
 	if syst != "UNIX Type: L8" {
 		t.Errorf("Expected SYST to be 'UNIX Type: L8', got %q", syst)
 	}
@@ -559,7 +569,6 @@ func TestClient_Integration(t *testing.T) {
 		t.Errorf("Expected /, got %s", pwd)
 	}
 
-	// Create a subdirectory using OS functions
 	subDir := filepath.Join(rootDir, "subdir")
 	if err := os.Mkdir(subDir, 0755); err != nil {
 		t.Fatal(err)
@@ -580,27 +589,24 @@ func TestClient_Integration(t *testing.T) {
 	if err := c.ChangeDir(".."); err != nil {
 		t.Errorf("ChangeDir .. failed: %v", err)
 	}
+}
 
+func testFileOperations(t *testing.T, c *ftp.Client, rootDir string) {
 	// 3. Test MakeDir
 	if err := c.MakeDir("newdir"); err != nil {
 		t.Errorf("MakeDir failed: %v", err)
 	}
-
-	// Verify with OS
 	if _, err := os.Stat(filepath.Join(rootDir, "newdir")); os.IsNotExist(err) {
 		t.Errorf("MakeDir didn't create directory on disk")
 	}
 
 	// 4. Test Rename
-	// Create file to rename
 	if err := os.WriteFile(filepath.Join(rootDir, "old.txt"), []byte("content"), 0644); err != nil {
 		t.Fatal(err)
 	}
-
 	if err := c.Rename("old.txt", "new.txt"); err != nil {
 		t.Errorf("Rename failed: %v", err)
 	}
-
 	if _, err := os.Stat(filepath.Join(rootDir, "old.txt")); !os.IsNotExist(err) {
 		t.Error("old.txt still exists")
 	}
@@ -623,9 +629,10 @@ func TestClient_Integration(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(rootDir, "newdir")); !os.IsNotExist(err) {
 		t.Error("newdir still exists after RemoveDir")
 	}
+}
 
+func testListingCommands(t *testing.T, c *ftp.Client, rootDir string) {
 	// 7. Test List and NameList
-	// Create some files
 	if err := os.WriteFile(filepath.Join(rootDir, "a.txt"), []byte("a"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -649,7 +656,6 @@ func TestClient_Integration(t *testing.T) {
 		t.Errorf("NameList returned too few entries: %d", len(names))
 	}
 
-	// Check if a.txt and b.txt are in names
 	hasA, hasB := false, false
 	for _, n := range names {
 		if n == "a.txt" {
@@ -662,8 +668,10 @@ func TestClient_Integration(t *testing.T) {
 	if !hasA || !hasB {
 		t.Errorf("NameList missing files: %v", names)
 	}
+}
 
-	// 8. Test Size (if supported)
+func testMetadataCommands(t *testing.T, c *ftp.Client, rootDir string) {
+	// 8. Test Size
 	size, err := c.Size("a.txt")
 	if err != nil {
 		t.Logf("Size failed (expected if not implemented): %v", err)
@@ -671,7 +679,7 @@ func TestClient_Integration(t *testing.T) {
 		t.Errorf("Expected size 1, got %d", size)
 	}
 
-	// 9. Test ModTime (MDTM)
+	// 9. Test ModTime
 	tTime, err := c.ModTime("a.txt")
 	if err != nil {
 		t.Logf("ModTime failed (expected if not implemented): %v", err)
@@ -679,8 +687,7 @@ func TestClient_Integration(t *testing.T) {
 		t.Error("ModTime returned zero time")
 	}
 
-	// 10. Test Quote (custom command)
-	// Send a NOOP via Quote
+	// 10. Test Quote
 	if _, err := c.Quote("NOOP"); err != nil {
 		t.Errorf("Quote NOOP failed: %v", err)
 	}
@@ -690,7 +697,6 @@ func TestClient_Integration(t *testing.T) {
 		t.Errorf("Append failed: %v", err)
 	}
 
-	// Verify content
 	content, err := os.ReadFile(filepath.Join(rootDir, "a.txt"))
 	if err != nil {
 		t.Fatal(err)
@@ -698,7 +704,9 @@ func TestClient_Integration(t *testing.T) {
 	if string(content) != "a appended" {
 		t.Errorf("Append content mismatch. Got %q, want %q", string(content), "a appended")
 	}
+}
 
+func testFeatureCommands(t *testing.T, c *ftp.Client) {
 	// 12. Test Features
 	feats, err := c.Features()
 	if err != nil {
@@ -714,11 +722,13 @@ func TestClient_Integration(t *testing.T) {
 		t.Error("HasFeature returned true for NONEXISTENTFEATURE")
 	}
 
-	// 14. Test SetOption (OPTS)
+	// 14. Test SetOption
 	if err := c.SetOption("UTF8", "ON"); err != nil {
 		t.Logf("SetOption failed (expected if not implemented): %v", err)
 	}
+}
 
+func testHashCommands(t *testing.T, c *ftp.Client) {
 	// 15. Test Hash and SetHashAlgo
 	if err := c.SetHashAlgo("SHA-256"); err != nil {
 		t.Errorf("SetHashAlgo failed: %v", err)
@@ -731,7 +741,9 @@ func TestClient_Integration(t *testing.T) {
 	if hash == "" {
 		t.Error("Hash returned empty string")
 	}
+}
 
+func testProgressTracking(t *testing.T, c *ftp.Client) {
 	// 16. Test ProgressReader
 	data := []byte("progress data")
 	var totalRead int64
@@ -768,6 +780,10 @@ func TestClient_Integration(t *testing.T) {
 	if buf.String() != string(data) {
 		t.Errorf("Retrieved content mismatch: got %q, want %q", buf.String(), string(data))
 	}
+}
+
+func testMLCommands(t *testing.T, c *ftp.Client) {
+	data := []byte("progress data")
 
 	// 18. Test MLStat
 	entry, err := c.MLStat("progress.txt")
@@ -800,15 +816,17 @@ func TestClient_Integration(t *testing.T) {
 				break
 			}
 		}
-
 		if !found {
 			t.Error("MLList did not find progress.txt")
 		}
 	}
+}
+
+func testFileTransferHelpers(t *testing.T, c *ftp.Client, rootDir string) {
+	uploadContent := "StoreFrom test content"
 
 	// 20. Test StoreFrom
 	localUploadPath := filepath.Join(rootDir, "local_upload.txt")
-	uploadContent := "StoreFrom test content"
 	if err := os.WriteFile(localUploadPath, []byte(uploadContent), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -817,7 +835,6 @@ func TestClient_Integration(t *testing.T) {
 		t.Errorf("StoreFrom failed: %v", err)
 	}
 
-	// Verify on server
 	serverStoredContent, err := os.ReadFile(filepath.Join(rootDir, "stored_from.txt"))
 	if err != nil {
 		t.Fatalf("Could not read stored file on server: %v", err)
@@ -839,10 +856,12 @@ func TestClient_Integration(t *testing.T) {
 	if string(downloadedContent) != uploadContent {
 		t.Errorf("RetrieveTo content mismatch: got %q, want %q", string(downloadedContent), uploadContent)
 	}
+}
 
-	// 22. Test RetrieveFrom (Resume Download / REST + RETR)
-	// We'll download the last part of "stored_from.txt" which has "StoreFrom test content"
-	// Let's skip the first 10 bytes: "StoreFrom "
+func testResumeOperations(t *testing.T, c *ftp.Client, rootDir string) {
+	uploadContent := "StoreFrom test content"
+
+	// 22. Test RetrieveFrom
 	offset := int64(10)
 	expectedPartial := uploadContent[offset:]
 	var partialBuf bytes.Buffer
@@ -854,25 +873,17 @@ func TestClient_Integration(t *testing.T) {
 		t.Errorf("RetrieveFrom content mismatch: got %q, want %q", partialBuf.String(), expectedPartial)
 	}
 
-	// 23. Test StoreAt (Resume Upload / REST + STOR/APPE)
-	// We'll append to a new file using StoreAt
-	// First create a file with some content
+	// 23. Test StoreAt
 	initialContent := "Initial "
 	if err := c.Store("resume_upload.txt", bytes.NewBufferString(initialContent)); err != nil {
 		t.Fatal(err)
 	}
 
-	// Now append using StoreAt with offset
-	// Note: StoreAt with offset > 0 uses APPE which might not strictly use REST depending on implementation,
-	// but the client implementation checks offset > 0.
-	// Actually client.StoreAt uses APPE if offset > 0.
-	// Let's verify it works.
 	appendContent := "Appended"
 	if err := c.StoreAt("resume_upload.txt", bytes.NewBufferString(appendContent), int64(len(initialContent))); err != nil {
 		t.Errorf("StoreAt failed: %v", err)
 	}
 
-	// Verify full content
 	fullContent, err := os.ReadFile(filepath.Join(rootDir, "resume_upload.txt"))
 	if err != nil {
 		t.Fatal(err)
@@ -881,23 +892,16 @@ func TestClient_Integration(t *testing.T) {
 		t.Errorf("StoreAt content mismatch: got %q, want %q", string(fullContent), initialContent+appendContent)
 	}
 
-	// 24. Test RestartAt directly
-	// Send REST command then RETR manually (via Retrieve but setting offset first)
-	// Note: Client.Retrieve doesn't send REST. We have to use RestartAt then Retrieve?
-	// But Retrieve resets state?
-	// Looking at client code, Retrieve just sends RETR.
-	// So:
+	// 24. Test RestartAt
 	if err := c.RestartAt(5); err != nil {
 		t.Errorf("RestartAt failed: %v", err)
 	}
-	// Verify it affects the next command?
-	// The client library doesn't strictly track the state between calls unless we look at the implementation.
-	// But the server should respect it if we send RETR next.
+
 	var restBuf bytes.Buffer
 	if err := c.Retrieve("stored_from.txt", &restBuf); err != nil {
 		t.Errorf("Retrieve after RestartAt failed: %v", err)
 	}
-	// The server should have sent from offset 5
+
 	expectedRest := uploadContent[5:]
 	if restBuf.String() != expectedRest {
 		t.Errorf("RestartAt + Retrieve content mismatch: got %q, want %q", restBuf.String(), expectedRest)
@@ -922,7 +926,15 @@ func TestServerCoverage_AdditionalBranches(t *testing.T) {
 		t.Fatalf("Login failed: %v", err)
 	}
 
-	// 1. Test CDUP
+	testCDUPCommand(t, c)
+	testMODECommands(t, c)
+	testSTRUCommands(t, c)
+	testTYPECommands(t, c)
+	testSITEErrorCases(t, c)
+	testMiscCommandCoverage(t, c)
+}
+
+func testCDUPCommand(t *testing.T, c *ftp.Client) {
 	if err := c.ChangeDir("/"); err != nil {
 		t.Fatal(err)
 	}
@@ -932,7 +944,6 @@ func TestServerCoverage_AdditionalBranches(t *testing.T) {
 	if err := c.ChangeDir("coverage_subdir"); err != nil {
 		t.Fatal(err)
 	}
-	// Manual CDUP via Quote since client might not have it
 	if _, err := c.Quote("CDUP"); err != nil {
 		t.Errorf("CDUP failed: %v", err)
 	}
@@ -940,8 +951,9 @@ func TestServerCoverage_AdditionalBranches(t *testing.T) {
 	if pwd != "/" {
 		t.Errorf("Expected /, got %s", pwd)
 	}
+}
 
-	// 2. Test MODE
+func testMODECommands(t *testing.T, c *ftp.Client) {
 	modes := []struct {
 		mode string
 		code int
@@ -957,8 +969,9 @@ func TestServerCoverage_AdditionalBranches(t *testing.T) {
 			t.Errorf("MODE %s expected %d, got %d", m.mode, m.code, resp.Code)
 		}
 	}
+}
 
-	// 3. Test STRU
+func testSTRUCommands(t *testing.T, c *ftp.Client) {
 	structures := []struct {
 		stru string
 		code int
@@ -974,16 +987,18 @@ func TestServerCoverage_AdditionalBranches(t *testing.T) {
 			t.Errorf("STRU %s expected %d, got %d", s.stru, s.code, resp.Code)
 		}
 	}
+}
 
-	// 4. Test TYPE (ASCII and invalid)
+func testTYPECommands(t *testing.T, c *ftp.Client) {
 	if _, err := c.Quote("TYPE", "A"); err != nil {
 		t.Errorf("TYPE A failed: %v", err)
 	}
 	if resp, _ := c.Quote("TYPE", "E"); resp.Code != 504 {
 		t.Errorf("TYPE E should be 504, got %d", resp.Code)
 	}
+}
 
-	// 5. Test SITE error cases
+func testSITEErrorCases(t *testing.T, c *ftp.Client) {
 	if resp, _ := c.Quote("SITE"); resp.Code != 501 {
 		t.Errorf("SITE empty should be 501, got %d", resp.Code)
 	}
@@ -996,18 +1011,17 @@ func TestServerCoverage_AdditionalBranches(t *testing.T) {
 	if resp, _ := c.Quote("SITE", "CHMOD", "999", "file"); resp.Code != 501 {
 		t.Errorf("SITE CHMOD invalid mode should be 501, got %d", resp.Code)
 	}
+}
 
-	// 6. Test STAT with path (not implemented)
+func testMiscCommandCoverage(t *testing.T, c *ftp.Client) {
 	if resp, _ := c.Quote("STAT", "/"); resp.Code != 502 {
 		t.Errorf("STAT with path should be 502, got %d", resp.Code)
 	}
 
-	// 7. Test HELP with arg
 	if resp, _ := c.Quote("HELP", "USER"); resp.Code != 214 {
 		t.Errorf("HELP USER should be 214, got %d", resp.Code)
 	}
 
-	// 8. Test PORT/EPRT error cases
 	if resp, _ := c.Quote("PORT", "invalid"); resp.Code != 501 {
 		t.Errorf("PORT invalid should be 501, got %d", resp.Code)
 	}
@@ -1018,7 +1032,6 @@ func TestServerCoverage_AdditionalBranches(t *testing.T) {
 		t.Errorf("EPRT invalid port should be 501, got %d", resp.Code)
 	}
 
-	// 9. Test REST error case
 	if resp, _ := c.Quote("REST", "invalid"); resp.Code != 501 {
 		t.Errorf("REST invalid should be 501, got %d", resp.Code)
 	}

@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func (s *session) handlePWD() {
+func (s *session) handlePWD(_ string) {
 	if !s.isLoggedIn {
 		s.reply(530, "Please login with USER and PASS.")
 		return
@@ -53,7 +53,7 @@ func (s *session) handleCWD(path string) {
 	s.reply(250, "Directory successfully changed.")
 }
 
-func (s *session) handleCDUP() {
+func (s *session) handleCDUP(_ string) {
 	s.handleCWD("..")
 }
 

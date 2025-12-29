@@ -81,7 +81,6 @@ func TestClient_BandwidthLimit(t *testing.T) {
 func TestServer_BandwidthLimit(t *testing.T) {
 	rootDir := t.TempDir()
 
-	// Create driver
 	driver, err := server.NewFSDriver(rootDir,
 		server.WithAuthenticator(func(user, pass, host string, remoteIP net.IP) (string, bool, error) {
 			return rootDir, false, nil
@@ -91,10 +90,9 @@ func TestServer_BandwidthLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create server with bandwidth limits
 	s, err := server.NewServer("127.0.0.1:0",
 		server.WithDriver(driver),
-		server.WithBandwidthLimit(10*1024, 5*1024), // 10 KB/s global, 5 KB/s per user
+		server.WithBandwidthLimit(10*1024, 5*1024),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -120,13 +118,11 @@ func TestServer_BandwidthLimit(t *testing.T) {
 		}
 	}()
 
-	// Create 10KB test data
 	data := make([]byte, 10*1024)
 	for i := range data {
 		data[i] = byte(i % 256)
 	}
 
-	// Connect without client-side bandwidth limit
 	c, err := ftp.Dial(addr, ftp.WithTimeout(30*time.Second))
 	if err != nil {
 		t.Fatalf("Failed to dial: %v", err)
@@ -141,40 +137,40 @@ func TestServer_BandwidthLimit(t *testing.T) {
 		t.Fatalf("Login failed: %v", err)
 	}
 
-	// Test upload with server-side bandwidth limit
+	testServerBandwidthUpload(t, c, data)
+	testServerBandwidthDownload(t, c, data)
+}
+
+func testServerBandwidthUpload(t *testing.T, c *ftp.Client, data []byte) {
 	start := time.Now()
 	if err := c.Store("server_bandwidth_test.txt", bytes.NewReader(data)); err != nil {
 		t.Fatalf("Store failed: %v", err)
 	}
 	uploadDuration := time.Since(start)
 
-	// Should take at least 1.5 seconds for 10KB at 5KB/s per-user limit (allowing margin)
 	if uploadDuration < 1500*time.Millisecond {
 		t.Errorf("Upload completed too quickly (%v), server bandwidth limiting may not be working", uploadDuration)
 	}
-	// But shouldn't take more than 3 seconds (with reasonable overhead)
 	if uploadDuration > 3*time.Second {
 		t.Errorf("Upload took too long (%v), possible performance issue", uploadDuration)
 	}
+}
 
-	// Test download with server-side bandwidth limit
+func testServerBandwidthDownload(t *testing.T, c *ftp.Client, data []byte) {
 	var buf bytes.Buffer
-	start = time.Now()
+	start := time.Now()
 	if err := c.Retrieve("server_bandwidth_test.txt", &buf); err != nil {
 		t.Fatalf("Retrieve failed: %v", err)
 	}
 	downloadDuration := time.Since(start)
 
-	// Should take at least 1.5 seconds for 10KB at 5KB/s per-user limit (allowing margin)
 	if downloadDuration < 1500*time.Millisecond {
 		t.Errorf("Download completed too quickly (%v), server bandwidth limiting may not be working", downloadDuration)
 	}
-	// But shouldn't take more than 3 seconds (with reasonable overhead)
 	if downloadDuration > 3*time.Second {
 		t.Errorf("Download took too long (%v), possible performance issue", downloadDuration)
 	}
 
-	// Verify data integrity
 	if !bytes.Equal(data, buf.Bytes()) {
 		t.Error("Data mismatch after server bandwidth-limited transfer")
 	}

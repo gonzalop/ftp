@@ -39,7 +39,7 @@ func (s *session) handleMDTM(path string) {
 	s.reply(213, info.ModTime().UTC().Format("20060102150405"))
 }
 
-func (s *session) handleFEAT() {
+func (s *session) handleFEAT(_ string) {
 	if _, err := s.writer.WriteString("211-Features:\r\n"); err != nil {
 		return
 	}

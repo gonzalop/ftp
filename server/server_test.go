@@ -16,27 +16,23 @@ import (
 // using the local ftp client package.
 func TestServerIntegration(t *testing.T) {
 	t.Parallel()
-	// 1. Setup temporary directory for server root
 	rootDir := t.TempDir()
 
-	// Create a dummy file to download
 	testContent := "Hello, FTP World!"
 	err := os.WriteFile(filepath.Join(rootDir, "test.txt"), []byte(testContent), 0644)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// 2. Start Server
 	driver, err := NewFSDriver(rootDir,
 		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
-			return rootDir, false, nil // Allow write access in rootDir
+			return rootDir, false, nil
 		}),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Listen on random port
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -48,14 +44,12 @@ func TestServerIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Run server in goroutine
 	go func() {
 		if err := server.Serve(ln); err != nil && err != ErrServerClosed {
 			t.Logf("Server stopped: %v", err)
 		}
 	}()
 
-	// 3. Connect with Client
 	c, err := ftp.Dial(addr, ftp.WithTimeout(5*time.Second))
 	if err != nil {
 		t.Fatalf("Failed to dial: %v", err)
@@ -66,12 +60,18 @@ func TestServerIntegration(t *testing.T) {
 		}
 	}()
 
-	// 4. Authenticate
 	if err := c.Login("anonymous", "anonymous"); err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
 
-	// 5. Test PWD
+	testPWD(t, c)
+	testLIST(t, c, testContent)
+	testRETR(t, c, testContent)
+	testSTOR(t, c, rootDir)
+	testSTOU(t, c, rootDir)
+}
+
+func testPWD(t *testing.T, c *ftp.Client) {
 	pwd, err := c.CurrentDir()
 	if err != nil {
 		t.Fatalf("CurrentDir failed: %v", err)
@@ -79,8 +79,9 @@ func TestServerIntegration(t *testing.T) {
 	if pwd != "/" {
 		t.Errorf("Expected /, got %s", pwd)
 	}
+}
 
-	// 6. Test LIST
+func testLIST(t *testing.T, c *ftp.Client, testContent string) {
 	entries, err := c.List(".")
 	if err != nil {
 		t.Fatalf("List failed: %v", err)
@@ -98,25 +99,26 @@ func TestServerIntegration(t *testing.T) {
 	if !found {
 		t.Error("test.txt not found in listing")
 	}
+}
 
-	// 7. Test RETR (Download)
+func testRETR(t *testing.T, c *ftp.Client, testContent string) {
 	var buf bytes.Buffer
-	err = c.Retrieve("test.txt", &buf)
+	err := c.Retrieve("test.txt", &buf)
 	if err != nil {
 		t.Fatalf("Retrieve failed: %v", err)
 	}
 	if buf.String() != testContent {
 		t.Errorf("Content mismatch: got %q, want %q", buf.String(), testContent)
 	}
+}
 
-	// 8. Test STOR (Upload)
+func testSTOR(t *testing.T, c *ftp.Client, rootDir string) {
 	uploadContent := "Upload success"
 	uploadBuf := bytes.NewBufferString(uploadContent)
 	if err := c.Store("upload.txt", uploadBuf); err != nil {
 		t.Fatalf("Store failed: %v", err)
 	}
 
-	// Verify upload on disk
 	diskContent, err := os.ReadFile(filepath.Join(rootDir, "upload.txt"))
 	if err != nil {
 		t.Fatalf("Could not read uploaded file: %v", err)
@@ -124,8 +126,9 @@ func TestServerIntegration(t *testing.T) {
 	if string(diskContent) != uploadContent {
 		t.Errorf("Uploaded content mismatch: got %q, want %q", string(diskContent), uploadContent)
 	}
+}
 
-	// 9. Test STOU (Store Unique)
+func testSTOU(t *testing.T, c *ftp.Client, rootDir string) {
 	uniqueContent := "Unique upload"
 	uniqueBuf := bytes.NewBufferString(uniqueContent)
 	uniqueName, err := c.StoreUnique(uniqueBuf)
@@ -136,7 +139,6 @@ func TestServerIntegration(t *testing.T) {
 		t.Error("StoreUnique returned empty filename")
 	} else {
 		t.Logf("StoreUnique generated: %s", uniqueName)
-		// Verify upload on disk
 		diskUniqueContent, err := os.ReadFile(filepath.Join(rootDir, uniqueName))
 		if err != nil {
 			t.Fatalf("Could not read unique file %s: %v", uniqueName, err)

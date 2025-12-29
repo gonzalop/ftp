@@ -14,31 +14,31 @@ import (
 func main() {
 	// Example 1: Connect to a public FTP server (GNU FTP)
 	fmt.Println("=== Example 1: Plain FTP Connection ===")
-	plainFTPExample()
+	PlainFTPExample()
 
 	fmt.Println("\n=== Example 2: Explicit TLS Connection ===")
 	fmt.Println("(Requires a server with TLS support)")
 	// Uncomment to test with your TLS-enabled server:
-	// explicitTLSExample()
+	// ExplicitTLSExample()
 
 	fmt.Println("\n=== Example 3: Non-Mutating Operations (GNU FTP) ===")
 	fmt.Println("(Requires an empty directory called 'temp')")
-	// testNonMutatingOperations()
+	// NonMutatingOperations()
 
 	fmt.Println("\n=== Example 4: File Operations ===")
 	fmt.Println("(Requires write access to a server)")
 	// Uncomment to test file operations:
-	// fileOperationsExample()
+	// FileOperationsExample()
 
 	fmt.Println("\n=== Example 5: Custom Listing Parser ===")
 	fmt.Println("(See the code)")
-	// customParserExample()
+	// CustomParserExample()
 
 	fmt.Println("\n=== Example 6: Ease of Use Helpers ===")
-	// easeOfUseExample()
+	// EaseOfUseExample()
 }
 
-func plainFTPExample() {
+func PlainFTPExample() {
 	// Connect to a public FTP server
 	client, err := ftp.Dial("ftp.gnu.org:21",
 		ftp.WithTimeout(10*time.Second),
@@ -82,17 +82,10 @@ func plainFTPExample() {
 	}
 }
 
-// testNonMutatingOperations demonstrates read-only operations on GNU FTP server
-func testNonMutatingOperations() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	}))
+// NonMutatingOperations demonstrates read-only operations on GNU FTP server
+func NonMutatingOperations() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	//s, _ := server.NewServer(":21",
-	//server.WithDriver(driver),
-	//server.WithLogger(logger),
-
-	// Connect to GNU FTP server
 	client, err := ftp.Dial("ftp.gnu.org:21",
 		ftp.WithTimeout(10*time.Second),
 		ftp.WithLogger(logger),
@@ -103,14 +96,22 @@ func testNonMutatingOperations() {
 	}
 	defer client.Quit()
 
-	// Login anonymously
 	if err := client.Login("anonymous", "anonymous@example.com"); err != nil {
 		log.Printf("Failed to login: %v", err)
 		return
 	}
 	fmt.Println("✓ Connected to ftp.gnu.org")
 
-	// 1. Discover server features
+	testServerFeatures(client)
+	testDirectoryNavigation(client)
+	testDirectoryListing(client)
+	testNameList(client)
+	testFileMetadata(client)
+	testKeepAlive(client)
+	testDownloadDirectory(client)
+}
+
+func testServerFeatures(client *ftp.Client) {
 	fmt.Println("\n--- Server Features ---")
 	features, err := client.Features()
 	if err != nil {
@@ -125,8 +126,9 @@ func testNonMutatingOperations() {
 			}
 		}
 	}
+}
 
-	// 2. Get current directory
+func testDirectoryNavigation(client *ftp.Client) {
 	fmt.Println("\n--- Current Directory ---")
 	dir, err := client.CurrentDir()
 	if err != nil {
@@ -134,8 +136,9 @@ func testNonMutatingOperations() {
 	} else {
 		fmt.Printf("✓ Current directory: %s\n", dir)
 	}
+}
 
-	// 3. List directory contents
+func testDirectoryListing(client *ftp.Client) {
 	fmt.Println("\n--- Directory Listing ---")
 	entries, err := client.List("/gnu/screen")
 	if err != nil {
@@ -150,8 +153,9 @@ func testNonMutatingOperations() {
 			fmt.Printf("  - %s (%s, %d bytes)\n", entry.Name, entry.Type, entry.Size)
 		}
 	}
+}
 
-	// 4. Test name list
+func testNameList(client *ftp.Client) {
 	fmt.Println("\n--- Name List ---")
 	names, err := client.NameList("/gnu")
 	if err != nil {
@@ -165,24 +169,27 @@ func testNonMutatingOperations() {
 			fmt.Printf("  - %s\n", name)
 		}
 	}
+}
 
-	// 5. Test file size if we found a file
-	if len(entries) > 0 {
-		for _, entry := range entries {
-			if entry.Type == "file" {
-				fmt.Println("\n--- File Size ---")
-				size, err := client.Size(entry.Name)
-				if err != nil {
-					log.Printf("Failed to get size for %s: %v", entry.Name, err)
-				} else {
-					fmt.Printf("✓ %s: %d bytes\n", entry.Name, size)
-				}
-				break
+func testFileMetadata(client *ftp.Client) {
+	entries, err := client.List("/gnu/screen")
+	if err != nil || len(entries) == 0 {
+		return
+	}
+
+	for _, entry := range entries {
+		if entry.Type == "file" {
+			fmt.Println("\n--- File Size ---")
+			size, err := client.Size(entry.Name)
+			if err != nil {
+				log.Printf("Failed to get size for %s: %v", entry.Name, err)
+			} else {
+				fmt.Printf("✓ %s: %d bytes\n", entry.Name, size)
 			}
+			break
 		}
 	}
 
-	// 6. Test modification time if supported
 	if client.HasFeature("MDTM") && len(entries) > 0 {
 		for _, entry := range entries {
 			if entry.Type == "file" {
@@ -197,23 +204,24 @@ func testNonMutatingOperations() {
 			}
 		}
 	}
+}
 
-	// 7. Test NOOP (keep-alive)
+func testKeepAlive(client *ftp.Client) {
 	fmt.Println("\n--- Keep-Alive Test ---")
 	if err := client.Noop(); err != nil {
 		log.Printf("NOOP failed: %v", err)
 	} else {
 		fmt.Println("✓ NOOP successful (connection alive)")
 	}
-
 	fmt.Println("\n✓ All non-mutating operations completed successfully")
+}
 
-	// 8. Download screen
+func testDownloadDirectory(client *ftp.Client) {
 	fmt.Println("\n--- Download screen ---")
 	client.DownloadDir("/gnu/screen", "temp")
 }
 
-func explicitTLSExample() {
+func ExplicitTLSExample() {
 	// Connect with explicit TLS
 	client, err := ftp.Dial("ftp.example.com:21",
 		ftp.WithExplicitTLS(&tls.Config{
@@ -237,7 +245,7 @@ func explicitTLSExample() {
 	fmt.Println("✓ Connected with TLS")
 }
 
-func fileOperationsExample() {
+func FileOperationsExample() {
 	client, err := ftp.Dial("ftp.example.com:21")
 	if err != nil {
 		log.Fatal(err)
@@ -295,7 +303,7 @@ func fileOperationsExample() {
 	}
 }
 
-func customParserExample() {
+func CustomParserExample() {
 	// Define a custom parser for a hypothetical format
 	// Format: "FILENAME|SIZE|TYPE"
 	myParser := &MyCustomParser{}
@@ -325,7 +333,7 @@ func (p *MyCustomParser) Parse(line string) (*ftp.Entry, bool) {
 	return nil, false
 }
 
-func easeOfUseExample() {
+func EaseOfUseExample() {
 	// 1. One-liner connection (defaults to port 21, anonymous login if user omitted)
 	// Supports: ftp://, ftps:// (implicit), ftp+explicit://
 	client, err := ftp.Connect("ftp://ftp.gnu.org")

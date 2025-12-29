@@ -49,7 +49,7 @@ func (s *session) handleSTRU(arg string) {
 
 // handleSYST handles the SYST command.
 // Returns the system type from server configuration.
-func (s *session) handleSYST() {
+func (s *session) handleSYST(_ string) {
 	s.reply(215, s.server.serverName)
 }
 

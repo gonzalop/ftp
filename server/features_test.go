@@ -382,14 +382,9 @@ func TestABOR(t *testing.T) {
 
 func TestServerMiscFeatures(t *testing.T) {
 	t.Parallel()
-	// Setup temporary directory
 	rootDir := t.TempDir()
 
 	// Create test file structure
-	// /
-	//   file1.txt
-	//   subdir/
-	//     file2.txt
 	err := os.WriteFile(filepath.Join(rootDir, "file1.txt"), []byte("content1"), 0644)
 	if err != nil {
 		t.Fatal(err)
@@ -403,16 +398,12 @@ func TestServerMiscFeatures(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Buffer for transfer log
 	var logBuf bytes.Buffer
-
-	// Create driver with Anon Write enabled
 	driver, err := NewFSDriver(rootDir, WithAnonWrite(true))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Create server with transfer logging
 	s, err := NewServer(":0",
 		WithDriver(driver),
 		WithTransferLog(&logBuf),
@@ -421,7 +412,6 @@ func TestServerMiscFeatures(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Start server
 	ln, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatal(err)
@@ -439,178 +429,165 @@ func TestServerMiscFeatures(t *testing.T) {
 		}
 	}()
 
-	// Wait for server to start
 	addr := ln.Addr().String()
 
-	/* TEST 1: Anonymous Write (STOR) & Transfer Logging */
-	{
-		conn, err := rawLogin(addr, "anonymous", "test@example.com")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer conn.Close()
+	testAnonWriteAndTransferLog(t, addr, &logBuf)
+	testRecursiveList(t, addr)
+	testUmask(t)
+}
 
-		// Passive mode
-		dataAddr, err := rawEnterPasv(conn)
-		if err != nil {
-			t.Fatal(err)
-		}
+func testAnonWriteAndTransferLog(t *testing.T, addr string, logBuf *bytes.Buffer) {
+	conn, err := rawLogin(addr, "anonymous", "test@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
 
-		// Connect data channel
-		dataConn, err := net.DialTimeout("tcp", dataAddr, 5*time.Second)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer dataConn.Close()
-
-		// Upload file
-		fmt.Fprintf(conn, "STOR upload.txt\r\n")
-		// Write data
-		fmt.Fprintf(dataConn, "uploaded content")
-		dataConn.Close() // Close data conn to finish transfer
-
-		// Read response
-		code, _, err := rawReadResponse(conn)
-		if err != nil {
-			t.Fatal(err)
-		}
-		// Expect 150 then 226
-		if code == 150 {
-			code, _, err = rawReadResponse(conn)
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-		if code != 226 {
-			t.Errorf("Expected 226 Transfer complete, got %d", code)
-		}
-
-		conn.Close()
+	dataAddr, err := rawEnterPasv(conn)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	// Verify Log
-	time.Sleep(100 * time.Millisecond) // Allow log flush
+	dataConn, err := net.DialTimeout("tcp", dataAddr, 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dataConn.Close()
+
+	fmt.Fprintf(conn, "STOR upload.txt\r\n")
+	fmt.Fprintf(dataConn, "uploaded content")
+	dataConn.Close()
+
+	code, _, err := rawReadResponse(conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code == 150 {
+		code, _, err = rawReadResponse(conn)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if code != 226 {
+		t.Errorf("Expected 226 Transfer complete, got %d", code)
+	}
+
+	conn.Close()
+
+	time.Sleep(100 * time.Millisecond)
 	logOutput := logBuf.String()
 	if !strings.Contains(logOutput, "upload.txt") {
 		t.Errorf("Log should contain filename 'upload.txt', got: %s", logOutput)
 	}
-	if !strings.Contains(logOutput, "i a anonymous") { // incoming, anonymous
+	if !strings.Contains(logOutput, "i a anonymous") {
 		t.Errorf("Log should indicate incoming anonymous transfer, got: %s", logOutput)
 	}
+}
 
-	/* TEST 2: Recursive List (LIST -R) */
-	{
-		conn, err := rawLogin(addr, "anonymous", "test@example.com")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer conn.Close()
-
-		dataAddr, err := rawEnterPasv(conn)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		dataConn, err := net.DialTimeout("tcp", dataAddr, 5*time.Second)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		fmt.Fprintf(conn, "LIST -R\r\n")
-
-		// Read all data from data connection
-		var buf bytes.Buffer
-		if err := dataConn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
-			t.Fatal(err)
-		}
-		_, err = buf.ReadFrom(dataConn)
-		dataConn.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// Consume control response
-		_, _, _ = rawReadResponse(conn)
-		_, _, _ = rawReadResponse(conn)
-
-		listing := buf.String()
-		if !strings.Contains(listing, "file1.txt") {
-			t.Errorf("Recursive listing missing root file. Got:\n%s", listing)
-		}
-		if !strings.Contains(listing, "subdir:") {
-			t.Errorf("Recursive listing missing subdir header")
-		}
-		if !strings.Contains(listing, "file2.txt") {
-			t.Errorf("Recursive listing missing subdir file")
-		}
+func testRecursiveList(t *testing.T, addr string) {
+	conn, err := rawLogin(addr, "anonymous", "test@example.com")
+	if err != nil {
+		t.Fatal(err)
 	}
-	/* TEST 3: Umask (local_umask) */
-	{
-		// 1. Create a separate server/driver with Umask
-		rootDirUmask := t.TempDir()
-		driverUmask, err := NewFSDriver(rootDirUmask, WithAnonWrite(true), WithSettings(&Settings{
-			Umask: 0077, // Private
-		}))
-		if err != nil {
-			t.Fatal(err)
-		}
+	defer conn.Close()
 
-		var logBuf bytes.Buffer
-		sUmask, err := NewServer(":0", WithDriver(driverUmask), WithTransferLog(&logBuf))
-		if err != nil {
-			t.Fatal(err)
-		}
-		lnUmask, err := net.Listen("tcp", ":0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		go func() {
-			_ = sUmask.Serve(lnUmask)
-		}()
-		defer func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			_ = sUmask.Shutdown(ctx)
-		}()
+	dataAddr, err := rawEnterPasv(conn)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		addrUmask := lnUmask.Addr().String()
+	dataConn, err := net.DialTimeout("tcp", dataAddr, 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		conn, err := rawLogin(addrUmask, "anonymous", "test@example.com")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer conn.Close()
+	fmt.Fprintf(conn, "LIST -R\r\n")
 
-		dataAddr, err := rawEnterPasv(conn)
-		if err != nil {
-			t.Fatal(err)
-		}
+	var buf bytes.Buffer
+	if err := dataConn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	_, err = buf.ReadFrom(dataConn)
+	dataConn.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		dataConn, err := net.DialTimeout("tcp", dataAddr, 5*time.Second)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer dataConn.Close()
+	_, _, _ = rawReadResponse(conn)
+	_, _, _ = rawReadResponse(conn)
 
-		// Store file
-		fmt.Fprintf(conn, "STOR private.txt\r\n")
-		fmt.Fprintf(dataConn, "secret")
-		dataConn.Close()
+	listing := buf.String()
+	if !strings.Contains(listing, "file1.txt") {
+		t.Errorf("Recursive listing missing root file. Got:\n%s", listing)
+	}
+	if !strings.Contains(listing, "subdir:") {
+		t.Errorf("Recursive listing missing subdir header")
+	}
+	if !strings.Contains(listing, "file2.txt") {
+		t.Errorf("Recursive listing missing subdir file")
+	}
+}
 
-		_, _, _ = rawReadResponse(conn) // 150
-		_, _, _ = rawReadResponse(conn) // 226
+func testUmask(t *testing.T) {
+	rootDirUmask := t.TempDir()
+	driverUmask, err := NewFSDriver(rootDirUmask, WithAnonWrite(true), WithSettings(&Settings{
+		Umask: 0077,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		// Verify bits
-		// 0666 &^ 0077 = 0600
-		info, err := os.Stat(filepath.Join(rootDirUmask, "private.txt"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		perm := info.Mode().Perm()
-		// We expect 0600 (rw-------)
-		if perm != 0600 {
-			t.Errorf("Expected 0600 permission with umask 077, got %v", perm)
-		}
+	var logBuf bytes.Buffer
+	sUmask, err := NewServer(":0", WithDriver(driverUmask), WithTransferLog(&logBuf))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lnUmask, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		_ = sUmask.Serve(lnUmask)
+	}()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = sUmask.Shutdown(ctx)
+	}()
+
+	addrUmask := lnUmask.Addr().String()
+
+	conn, err := rawLogin(addrUmask, "anonymous", "test@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	dataAddr, err := rawEnterPasv(conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dataConn, err := net.DialTimeout("tcp", dataAddr, 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dataConn.Close()
+
+	fmt.Fprintf(conn, "STOR private.txt\r\n")
+	fmt.Fprintf(dataConn, "secret")
+	dataConn.Close()
+
+	_, _, _ = rawReadResponse(conn)
+	_, _, _ = rawReadResponse(conn)
+
+	info, err := os.Stat(filepath.Join(rootDirUmask, "private.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	perm := info.Mode().Perm()
+	if perm != 0600 {
+		t.Errorf("Expected 0600 permission with umask 077, got %v", perm)
 	}
 }
 

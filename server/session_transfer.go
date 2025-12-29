@@ -334,7 +334,7 @@ func (s *session) handleAPPE(path string) {
 	}()
 }
 
-func (s *session) handleSTOU() {
+func (s *session) handleSTOU(_ string) {
 	if !s.isLoggedIn {
 		s.reply(530, "Not logged in.")
 		return
@@ -479,7 +479,7 @@ func (s *session) listenPassive() (net.Listener, error) {
 	return net.Listen("tcp", ":0")
 }
 
-func (s *session) handlePASV() {
+func (s *session) handlePASV(_ string) {
 	if !s.isLoggedIn {
 		s.reply(530, "Please login with USER and PASS.")
 		return
@@ -549,7 +549,7 @@ func (s *session) handlePASV() {
 	s.reply(227, "Entering Passive Mode ("+arg+").")
 }
 
-func (s *session) handleEPSV() {
+func (s *session) handleEPSV(_ string) {
 	if !s.isLoggedIn {
 		s.reply(530, "Please login with USER and PASS.")
 		return

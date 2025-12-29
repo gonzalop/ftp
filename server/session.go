@@ -62,6 +62,73 @@ type session struct {
 	resolvedIP     net.IP
 }
 
+// commandHandlers maps FTP commands to their handler functions.
+// All handlers have the signature: func(s *session, arg string)
+// Note: USER, PASS, QUIT, and NOOP are handled specially in handleCommand
+var commandHandlers = map[string]func(*session, string){
+	// File Management
+	"CWD":  (*session).handleCWD,
+	"XCWD": (*session).handleCWD,
+	"CDUP": (*session).handleCDUP,
+	"XCUP": (*session).handleCDUP,
+	"UP":   (*session).handleCDUP,
+	"PWD":  (*session).handlePWD,
+	"XPWD": (*session).handlePWD,
+	"LIST": (*session).handleLIST,
+	"NLST": (*session).handleNLST,
+	"MKD":  (*session).handleMKD,
+	"XMKD": (*session).handleMKD,
+	"RMD":  (*session).handleRMD,
+	"XRMD": (*session).handleRMD,
+	"DELE": (*session).handleDELE,
+	"RNFR": (*session).handleRNFR,
+	"RNTO": (*session).handleRNTO,
+
+	// File Transfer
+	"RETR": (*session).handleRETR,
+	"STOR": (*session).handleSTOR,
+	"APPE": (*session).handleAPPE,
+	"STOU": (*session).handleSTOU,
+
+	// Transfer Parameters
+	"TYPE": (*session).handleTYPE,
+	"PORT": (*session).handlePORT,
+	"PASV": (*session).handlePASV,
+	"EPSV": (*session).handleEPSV,
+	"EPRT": (*session).handleEPRT,
+	"REST": (*session).handleREST,
+
+	// Information
+	"SIZE": (*session).handleSIZE,
+	"MDTM": (*session).handleMDTM,
+	"FEAT": (*session).handleFEAT,
+	"OPTS": (*session).handleOPTS,
+	"MLSD": (*session).handleMLSD,
+	"MLST": (*session).handleMLST,
+
+	// Security
+	"AUTH": (*session).handleAUTH,
+	"PROT": (*session).handlePROT,
+	"PBSZ": (*session).handlePBSZ,
+
+	// RFC 1123 Compliance
+	"ACCT": (*session).handleACCT,
+	"MODE": (*session).handleMODE,
+	"STRU": (*session).handleSTRU,
+	"SYST": (*session).handleSYST,
+	"STAT": (*session).handleSTAT,
+	"HELP": (*session).handleHELP,
+	"SITE": (*session).handleSITE,
+
+	// Extensions
+	"HOST": (*session).handleHOST,
+	"HASH": (*session).handleHASH,
+	"MFMT": (*session).handleMFMT,
+
+	// Special
+	"ABOR": (*session).handleABOR,
+}
+
 // validateActiveIP ensures the data connection target matches the control connection source.
 // This prevents FTP bounce attacks.
 func (s *session) validateActiveIP(ip net.IP) bool {
@@ -209,25 +276,8 @@ type command struct {
 func (s *session) serve() {
 	defer s.close()
 
-	// Send welcome message
-	if strings.HasPrefix(s.server.welcomeMessage, "220 ") {
-		// Message already has code, send raw
-		s.mu.Lock()
-		fmt.Fprintf(s.writer, "%s\r\n", s.server.welcomeMessage)
-		s.writer.Flush()
-		s.mu.Unlock()
-	} else if strings.HasPrefix(s.server.welcomeMessage, "220") {
-		// Has code but no space, add it
-		s.mu.Lock()
-		fmt.Fprintf(s.writer, "220 %s\r\n", s.server.welcomeMessage[3:])
-		s.writer.Flush()
-		s.mu.Unlock()
-	} else {
-		// No code, use reply
-		s.reply(220, s.server.welcomeMessage)
-	}
+	s.sendWelcome()
 
-	// Security audit: session started
 	s.server.logger.Info("session_started",
 		"session_id", s.sessionID,
 		"remote_ip", s.redactIP(s.remoteIP),
@@ -236,41 +286,7 @@ func (s *session) serve() {
 	done := make(chan struct{})
 	defer close(done)
 
-	cmdChan := make(chan command)
-	go func() {
-		defer close(cmdChan)
-		for {
-			// Apply read timeout (for command reading)
-			s.mu.Lock()
-			conn := s.conn
-			s.mu.Unlock()
-
-			if s.server.readTimeout > 0 {
-				_ = conn.SetReadDeadline(time.Now().Add(s.server.readTimeout))
-			} else if s.server.maxIdleTime > 0 {
-				_ = conn.SetReadDeadline(time.Now().Add(s.server.maxIdleTime))
-			}
-
-			line, err := s.readCommand()
-
-			select {
-			case cmdChan <- command{line, err}:
-			case <-done:
-				return
-			}
-
-			if err != nil {
-				return
-			}
-
-			// Wait for next request signal
-			select {
-			case <-s.cmdReqChan:
-			case <-done:
-				return
-			}
-		}
-	}()
+	cmdChan := s.startCommandReader(done)
 
 	for {
 		cmd, ok := <-cmdChan
@@ -293,29 +309,76 @@ func (s *session) serve() {
 			return
 		}
 
-		// Clear read deadline
 		_ = s.conn.SetReadDeadline(time.Time{})
 
-		// Apply write timeout (for response writing)
 		if s.server.writeTimeout > 0 {
 			_ = s.conn.SetWriteDeadline(time.Now().Add(s.server.writeTimeout))
 		}
 
 		s.handleCommand(cmd.line)
 
-		// Clear write deadline
 		if s.server.writeTimeout > 0 {
 			_ = s.conn.SetWriteDeadline(time.Time{})
 		}
 
-		// Signal reader to continue
-		// This must happen AFTER handleCommand, so any AUTH TLS changes are applied.
 		select {
 		case s.cmdReqChan <- struct{}{}:
 		case <-time.After(1 * time.Second):
-			// Should not happen unless reader died
 		}
 	}
+}
+
+func (s *session) sendWelcome() {
+	if strings.HasPrefix(s.server.welcomeMessage, "220 ") {
+		s.mu.Lock()
+		fmt.Fprintf(s.writer, "%s\r\n", s.server.welcomeMessage)
+		s.writer.Flush()
+		s.mu.Unlock()
+	} else if strings.HasPrefix(s.server.welcomeMessage, "220") {
+		s.mu.Lock()
+		fmt.Fprintf(s.writer, "220 %s\r\n", s.server.welcomeMessage[3:])
+		s.writer.Flush()
+		s.mu.Unlock()
+	} else {
+		s.reply(220, s.server.welcomeMessage)
+	}
+}
+
+func (s *session) startCommandReader(done chan struct{}) chan command {
+	cmdChan := make(chan command)
+	go func() {
+		defer close(cmdChan)
+		for {
+			s.mu.Lock()
+			conn := s.conn
+			s.mu.Unlock()
+
+			if s.server.readTimeout > 0 {
+				_ = conn.SetReadDeadline(time.Now().Add(s.server.readTimeout))
+			} else if s.server.maxIdleTime > 0 {
+				_ = conn.SetReadDeadline(time.Now().Add(s.server.maxIdleTime))
+			}
+
+			line, err := s.readCommand()
+
+			select {
+			case cmdChan <- command{line, err}:
+			case <-done:
+				return
+			}
+
+			if err != nil {
+				return
+			}
+
+			select {
+			case <-s.cmdReqChan:
+			case <-done:
+				return
+			}
+		}
+	}()
+	return cmdChan
 }
 
 // readCommand reads a line from the reader with a limit.
@@ -397,45 +460,27 @@ func (s *session) handleCommand(line string) {
 		return
 	}
 
+	// Handle special commands that return errors
 	var err error
 	switch cmd {
-	// Access Control
-	case "USER", "PASS", "QUIT":
-		err = s.handleAccessCommand(cmd, arg)
-
-	// File Management
-	case "CWD", "XCWD", "CDUP", "XCUP", "UP", "PWD", "XPWD", "LIST", "NLST", "MKD", "XMKD", "RMD", "XRMD", "DELE", "RNFR", "RNTO":
-		s.handleFileCommand(cmd, arg)
-
-	// File Transfer
-	case "RETR", "STOR", "APPE", "STOU":
-		s.handleTransferCommand(cmd, arg)
-
-	// Transfer Parameters
-	case "TYPE", "PORT", "PASV", "EPSV", "EPRT", "REST":
-		s.handleParamCommand(cmd, arg)
-
-	// Information
-	case "SIZE", "MDTM", "FEAT", "OPTS", "MLSD", "MLST", "NOOP":
-		s.handleInfoCommand(cmd, arg)
-
-	// Security
-	case "AUTH", "PROT", "PBSZ":
-		s.handleSecurityCommand(cmd, arg)
-
-	// RFC 1123 Compliance
-	case "ACCT", "MODE", "STRU", "SYST", "STAT", "HELP", "SITE":
-		s.handleComplianceCommand(cmd, arg)
-
-	// Extensions
-	case "HOST", "HASH", "MFMT":
-		s.handleExtensionsCommand(cmd, arg)
-
-	case "ABOR":
-		s.handleABOR()
-
+	case "USER":
+		err = s.handleUSER(arg)
+	case "PASS":
+		err = s.handlePASS(arg)
+	case "QUIT":
+		s.reply(221, "Service closing control connection.")
+		return
+	case "NOOP":
+		s.reply(200, "OK.")
+		return
 	default:
-		s.reply(502, "Command not implemented.")
+		// Look up handler in command map
+		if handler, ok := commandHandlers[cmd]; ok {
+			handler(s, arg)
+		} else {
+			s.reply(502, "Command not implemented.")
+		}
+		return
 	}
 
 	if err != nil {
@@ -446,134 +491,6 @@ func (s *session) handleCommand(line string) {
 			"cmd", cmd,
 			"error", err,
 		)
-	}
-}
-
-func (s *session) handleAccessCommand(cmd, arg string) error {
-	switch cmd {
-	case "USER":
-		return s.handleUSER(arg)
-	case "PASS":
-		return s.handlePASS(arg)
-	case "QUIT":
-		s.reply(221, "Service closing control connection.")
-		return nil
-	}
-	return nil
-}
-
-func (s *session) handleFileCommand(cmd, arg string) {
-	switch cmd {
-	case "CWD", "XCWD":
-		s.handleCWD(arg)
-	case "CDUP", "XCUP", "UP":
-		s.handleCDUP()
-	case "PWD", "XPWD":
-		s.handlePWD()
-	case "LIST":
-		s.handleLIST(arg)
-	case "NLST":
-		s.handleNLST(arg)
-	case "MKD", "XMKD":
-		s.handleMKD(arg)
-	case "RMD", "XRMD":
-		s.handleRMD(arg)
-	case "DELE":
-		s.handleDELE(arg)
-	case "RNFR":
-		s.handleRNFR(arg)
-	case "RNTO":
-		s.handleRNTO(arg)
-	}
-}
-
-func (s *session) handleTransferCommand(cmd, arg string) {
-	switch cmd {
-	case "RETR":
-		s.handleRETR(arg)
-	case "STOR":
-		s.handleSTOR(arg)
-	case "APPE":
-		s.handleAPPE(arg)
-	case "STOU":
-		s.handleSTOU()
-	}
-}
-
-func (s *session) handleParamCommand(cmd, arg string) {
-	switch cmd {
-	case "TYPE":
-		s.handleTYPE(arg)
-	case "PORT":
-		s.handlePORT(arg)
-	case "PASV":
-		s.handlePASV()
-	case "EPSV":
-		s.handleEPSV()
-	case "EPRT":
-		s.handleEPRT(arg)
-	case "REST":
-		s.handleREST(arg)
-	}
-}
-
-func (s *session) handleInfoCommand(cmd, arg string) {
-	switch cmd {
-	case "SIZE":
-		s.handleSIZE(arg)
-	case "MDTM":
-		s.handleMDTM(arg)
-	case "FEAT":
-		s.handleFEAT()
-	case "OPTS":
-		s.handleOPTS(arg)
-	case "MLSD":
-		s.handleMLSD(arg)
-	case "MLST":
-		s.handleMLST(arg)
-	case "NOOP":
-		s.reply(200, "OK.")
-	}
-}
-
-func (s *session) handleSecurityCommand(cmd, arg string) {
-	switch cmd {
-	case "AUTH":
-		s.handleAUTH(arg)
-	case "PROT":
-		s.handlePROT(arg)
-	case "PBSZ":
-		s.handlePBSZ(arg)
-	}
-}
-
-func (s *session) handleComplianceCommand(cmd, arg string) {
-	switch cmd {
-	case "ACCT":
-		s.handleACCT(arg)
-	case "MODE":
-		s.handleMODE(arg)
-	case "STRU":
-		s.handleSTRU(arg)
-	case "SYST":
-		s.handleSYST()
-	case "STAT":
-		s.handleSTAT(arg)
-	case "HELP":
-		s.handleHELP(arg)
-	case "SITE":
-		s.handleSITE(arg)
-	}
-}
-
-func (s *session) handleExtensionsCommand(cmd, arg string) {
-	switch cmd {
-	case "HOST":
-		s.handleHOST(arg)
-	case "HASH":
-		s.handleHASH(arg)
-	case "MFMT":
-		s.handleMFMT(arg)
 	}
 }
 
@@ -653,7 +570,7 @@ func (s *session) wrapDataConn(conn net.Conn) (net.Conn, error) {
 	return &trackingConn{Conn: conn, server: s.server}, nil
 }
 
-func (s *session) handleABOR() {
+func (s *session) handleABOR(_ string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
