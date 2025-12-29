@@ -116,6 +116,15 @@ func (s *session) handleRETR(path string) {
 			throughputMBps = float64(bytesTransferred) / duration.Seconds() / 1024 / 1024
 		}
 
+		// Calculate bandwidth limit in MB/s for logging
+		// Use per-user limit if set, otherwise use global limit
+		bandwidthLimitMBps := float64(0)
+		if s.server.bandwidthLimitPerUser > 0 {
+			bandwidthLimitMBps = float64(s.server.bandwidthLimitPerUser) / 1024 / 1024
+		} else if s.server.bandwidthLimitGlobal > 0 {
+			bandwidthLimitMBps = float64(s.server.bandwidthLimitGlobal) / 1024 / 1024
+		}
+
 		// Transfer logging
 		s.server.logger.Info("transfer_complete",
 			"session_id", s.sessionID,
@@ -127,6 +136,7 @@ func (s *session) handleRETR(path string) {
 			"bytes", bytesTransferred,
 			"duration_ms", duration.Milliseconds(),
 			"throughput_mbps", fmt.Sprintf("%.2f", throughputMBps),
+			"bandwidth_limit_mbps", fmt.Sprintf("%.2f", bandwidthLimitMBps),
 			"offset", offset,
 		)
 
@@ -227,6 +237,15 @@ func (s *session) handleSTOR(path string) {
 			throughputMBps = float64(bytesTransferred) / duration.Seconds() / 1024 / 1024
 		}
 
+		// Calculate bandwidth limit in MB/s for logging
+		// Use per-user limit if set, otherwise use global limit
+		bandwidthLimitMBps := float64(0)
+		if s.server.bandwidthLimitPerUser > 0 {
+			bandwidthLimitMBps = float64(s.server.bandwidthLimitPerUser) / 1024 / 1024
+		} else if s.server.bandwidthLimitGlobal > 0 {
+			bandwidthLimitMBps = float64(s.server.bandwidthLimitGlobal) / 1024 / 1024
+		}
+
 		// Transfer logging
 		s.server.logger.Info("transfer_complete",
 			"session_id", s.sessionID,
@@ -238,6 +257,7 @@ func (s *session) handleSTOR(path string) {
 			"bytes", bytesTransferred,
 			"duration_ms", duration.Milliseconds(),
 			"throughput_mbps", fmt.Sprintf("%.2f", throughputMBps),
+			"bandwidth_limit_mbps", fmt.Sprintf("%.2f", bandwidthLimitMBps),
 		)
 
 		// Metrics collection
