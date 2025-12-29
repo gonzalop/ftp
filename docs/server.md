@@ -16,6 +16,9 @@ A flexible and modular FTP server implementation in Go. Embed an FTP server into
 - **Pluggable Drivers**: Abstract `Driver` interface allows backends for local filesystems, S3, memory, etc.
     - Built-in `FSDriver` uses [`os.Root`](https://pkg.go.dev/os#Root) for secure filesystem access
 - **RFC Compliance**: Implements key FTP RFCs for broad client compatibility
+- **Bandwidth Limiting** - Global and per-user rate limits for transfer control
+- **Audit Logging** - Comprehensive logging for security-relevant operations (session lifecycle, file operations, transfers)
+- **IP-Based Access Control** - Authenticator receives client IP for security policies
 - **Explicit TLS (FTPS)** - Secure connections using AUTH TLS (recommended)
 - **Implicit TLS** - Legacy FTPS on port 990
 - **Asynchronous Transfers & ABOR** - Support for aborting transfers (RFC 959)
@@ -170,6 +173,21 @@ driver, _ := server.NewFSDriver("/var/ftp",
     }),
 )
 ```
+
+### Bandwidth Limiting
+
+Control transfer speeds with global and per-user bandwidth limits. This is useful for preventing bandwidth abuse and ensuring fair resource allocation.
+
+```go
+driver, _ := server.NewFSDriver("/var/ftp")
+srv, _ := server.NewServer(":21",
+    server.WithDriver(driver),
+    // 10 MB/s global limit, 1 MB/s per user
+    server.WithBandwidthLimit(10*1024*1024, 1024*1024),
+)
+```
+
+When both limits are set, the most restrictive limit applies. Set either value to 0 for unlimited bandwidth.
 
 #### Client Authentication (mTLS)
 

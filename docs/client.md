@@ -15,6 +15,7 @@ A production-ready FTP client library for Go with comprehensive TLS support, pro
 - **Explicit TLS (FTPS)** - Secure connections using AUTH TLS (recommended)
 - **Implicit TLS** - Legacy FTPS on port 990
 - **TLS Session Reuse** - Automatic session reuse for data connections (required by modern servers)
+- **Bandwidth Limiting** - Control upload/download speeds with configurable rate limits
 - **Progress Tracking** - Built-in progress callbacks via io.Reader/Writer wrappers
 - **Rich Error Context** - Detailed protocol errors with command/response information
 - **Directory Operations** - Full support for listing, creating, deleting directories
@@ -23,7 +24,8 @@ A production-ready FTP client library for Go with comprehensive TLS support, pro
 - **File Metadata (MDTM)** - Get file modification times (RFC 3659)
 - **Resume Support (REST)** - Resume interrupted transfers (RFC 3659)
 - **Machine-Readable Listings (MLST/MLSD)** - Structured directory listings (RFC 3659)
-- **Protocol Commands** - Support for `SYST` (System type) and `ABOR` (Abort transfer)
+- **Protocol Commands** - Support for `SYST` (System type), `ABOR` (Abort transfer)
+- **Automatic EPSV Fallback** - Automatically disables EPSV if server returns 502, falling back to PASV
 - **Virtual Hosting (HOST)** - Support for virtual hosting (RFC 7151)
 - **Recursive Operations** - Walk, UploadDir, DownloadDir helpers
 

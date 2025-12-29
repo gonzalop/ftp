@@ -76,6 +76,7 @@ func main() {
 ### Client Features
 
 - **TLS/FTPS** - Both explicit (AUTH TLS) and implicit modes
+- **Bandwidth Limiting** - Control upload/download speeds with configurable rate limits
 - **Automatic Keep-Alive** - Prevents timeouts during idle periods or long transfers
 - **Debug Logging** - Structured logging with `log/slog` for easier debugging
 - **Progress Tracking** - Built-in callbacks for upload/download progress
@@ -90,11 +91,13 @@ func main() {
 ### Server Features
 
 - **Pluggable Backends** - Filesystem, S3, memory, or custom storage
+- **Bandwidth Limiting** - Global and per-user rate limits for transfer control
+- **Audit Logging** - Comprehensive logging for security-relevant operations
 - **Graceful Shutdown** - Stop accepting connections and wait for active transfers
 - **TLS/FTPS** - Explicit and implicit FTPS support
 - **Virtual Hosting** - HOST command for multi-tenant setups (RFC 7151)
 - **File Hashing** - HASH command with SHA-256, SHA-512, MD5, CRC32
-
+- **IP-Based Access Control** - Authenticate with client IP for security policies
 - **Secure by Default** - Built-in path validation and chroot support
 - **Extensible** - Custom authentication and driver interfaces
 
