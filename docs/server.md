@@ -5,7 +5,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/gonzalop/ftp)](https://goreportcard.com/report/github.com/gonzalop/ftp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> 📖 **Navigation:** [← Main](../README.md) | [Client →](client.md) | [Examples →](../examples/) | [Compliance →](server-compliance.md)
+> 📖 **Navigation:** [← Main](../README.md) | [Client →](client.md) | [Security →](security.md) | [Performance →](performance.md) | [Examples →](../examples/) | [Compliance →](server-compliance.md)
 
 > 💡 **Looking for the FTP client?** See [FTP Client documentation](client.md)
 
@@ -204,7 +204,7 @@ You can customize authentication and support virtual hosts using the `Authentica
 
 ```go
 driver, _ := server.NewFSDriver("/var/ftp/default",
-    server.WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+    server.WithAuthenticator(func(user, pass, host string, remoteIP net.IP) (string, bool, error) {
         // Implement your logic here
         if host == "example.com" {
              if user == "admin" && pass == "secret" {

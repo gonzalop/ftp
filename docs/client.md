@@ -5,7 +5,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/gonzalop/ftp)](https://goreportcard.com/report/github.com/gonzalop/ftp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> 📖 **Navigation:** [← Main](../README.md) | [Server →](server.md) | [Examples →](../examples/) | [Compliance →](client-compliance.md)
+> 📖 **Navigation:** [← Main](../README.md) | [Server →](server.md) | [Security →](security.md) | [Performance →](performance.md) | [Examples →](../examples/) | [Compliance →](client-compliance.md)
 
 A production-ready FTP client library for Go with comprehensive TLS support, progress tracking, and a developer-friendly API.
 
