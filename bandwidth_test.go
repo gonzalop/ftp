@@ -1,0 +1,181 @@
+package ftp_test
+
+import (
+	"bytes"
+	"context"
+	"net"
+	"testing"
+	"time"
+
+	"github.com/gonzalop/ftp"
+	"github.com/gonzalop/ftp/server"
+)
+
+func TestClient_BandwidthLimit(t *testing.T) {
+	addr, cleanup, _ := setupServer(t)
+	defer cleanup()
+
+	// Create 10KB test data
+	data := make([]byte, 10*1024)
+	for i := range data {
+		data[i] = byte(i % 256)
+	}
+
+	// Connect with 5KB/s bandwidth limit
+	c, err := ftp.Dial(addr,
+		ftp.WithTimeout(30*time.Second),
+		ftp.WithBandwidthLimit(5*1024), // 5 KB/s
+	)
+	if err != nil {
+		t.Fatalf("Failed to dial: %v", err)
+	}
+	defer func() {
+		if err := c.Quit(); err != nil {
+			t.Logf("Quit error: %v", err)
+		}
+	}()
+
+	if err := c.Login("anonymous", "anonymous"); err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+
+	// Test upload with bandwidth limit
+	start := time.Now()
+	if err := c.Store("bandwidth_test.txt", bytes.NewReader(data)); err != nil {
+		t.Fatalf("Store failed: %v", err)
+	}
+	uploadDuration := time.Since(start)
+
+	// Should take at least 1.5 seconds for 10KB at 5KB/s (allowing margin)
+	if uploadDuration < 1500*time.Millisecond {
+		t.Errorf("Upload completed too quickly (%v), bandwidth limiting may not be working", uploadDuration)
+	}
+	// But shouldn't take more than 3 seconds (with reasonable overhead)
+	if uploadDuration > 3*time.Second {
+		t.Errorf("Upload took too long (%v), possible performance issue", uploadDuration)
+	}
+
+	// Test download with bandwidth limit
+	var buf bytes.Buffer
+	start = time.Now()
+	if err := c.Retrieve("bandwidth_test.txt", &buf); err != nil {
+		t.Fatalf("Retrieve failed: %v", err)
+	}
+	downloadDuration := time.Since(start)
+
+	// Should take at least 1.5 seconds for 10KB at 5KB/s (allowing margin)
+	if downloadDuration < 1500*time.Millisecond {
+		t.Errorf("Download completed too quickly (%v), bandwidth limiting may not be working", downloadDuration)
+	}
+	// But shouldn't take more than 3 seconds (with reasonable overhead)
+	if downloadDuration > 3*time.Second {
+		t.Errorf("Download took too long (%v), possible performance issue", downloadDuration)
+	}
+
+	// Verify data integrity
+	if !bytes.Equal(data, buf.Bytes()) {
+		t.Error("Data mismatch after bandwidth-limited transfer")
+	}
+}
+
+func TestServer_BandwidthLimit(t *testing.T) {
+	rootDir := t.TempDir()
+
+	// Create driver
+	driver, err := server.NewFSDriver(rootDir,
+		server.WithAuthenticator(func(user, pass, host string, remoteIP net.IP) (string, bool, error) {
+			return rootDir, false, nil
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create server with bandwidth limits
+	s, err := server.NewServer("127.0.0.1:0",
+		server.WithDriver(driver),
+		server.WithBandwidthLimit(10*1024, 5*1024), // 10 KB/s global, 5 KB/s per user
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	listener, err := SystemListener()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	go func() {
+		if err := s.Serve(listener); err != nil && err != server.ErrServerClosed {
+			t.Logf("Server stopped: %v", err)
+		}
+	}()
+
+	addr := listener.Addr().String()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		if err := s.Shutdown(ctx); err != nil {
+			t.Logf("Shutdown error: %v", err)
+		}
+	}()
+
+	// Create 10KB test data
+	data := make([]byte, 10*1024)
+	for i := range data {
+		data[i] = byte(i % 256)
+	}
+
+	// Connect without client-side bandwidth limit
+	c, err := ftp.Dial(addr, ftp.WithTimeout(30*time.Second))
+	if err != nil {
+		t.Fatalf("Failed to dial: %v", err)
+	}
+	defer func() {
+		if err := c.Quit(); err != nil {
+			t.Logf("Quit error: %v", err)
+		}
+	}()
+
+	if err := c.Login("anonymous", "anonymous"); err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+
+	// Test upload with server-side bandwidth limit
+	start := time.Now()
+	if err := c.Store("server_bandwidth_test.txt", bytes.NewReader(data)); err != nil {
+		t.Fatalf("Store failed: %v", err)
+	}
+	uploadDuration := time.Since(start)
+
+	// Should take at least 1.5 seconds for 10KB at 5KB/s per-user limit (allowing margin)
+	if uploadDuration < 1500*time.Millisecond {
+		t.Errorf("Upload completed too quickly (%v), server bandwidth limiting may not be working", uploadDuration)
+	}
+	// But shouldn't take more than 3 seconds (with reasonable overhead)
+	if uploadDuration > 3*time.Second {
+		t.Errorf("Upload took too long (%v), possible performance issue", uploadDuration)
+	}
+
+	// Test download with server-side bandwidth limit
+	var buf bytes.Buffer
+	start = time.Now()
+	if err := c.Retrieve("server_bandwidth_test.txt", &buf); err != nil {
+		t.Fatalf("Retrieve failed: %v", err)
+	}
+	downloadDuration := time.Since(start)
+
+	// Should take at least 1.5 seconds for 10KB at 5KB/s per-user limit (allowing margin)
+	if downloadDuration < 1500*time.Millisecond {
+		t.Errorf("Download completed too quickly (%v), server bandwidth limiting may not be working", downloadDuration)
+	}
+	// But shouldn't take more than 3 seconds (with reasonable overhead)
+	if downloadDuration > 3*time.Second {
+		t.Errorf("Download took too long (%v), possible performance issue", downloadDuration)
+	}
+
+	// Verify data integrity
+	if !bytes.Equal(data, buf.Bytes()) {
+		t.Error("Data mismatch after server bandwidth-limited transfer")
+	}
+}

@@ -91,7 +91,10 @@ func (s *session) handleRETR(path string) {
 
 		// Track transfer metrics
 		startTime := time.Now()
-		bytesTransferred, err := io.Copy(conn, src)
+
+		// Apply bandwidth limiting to the connection (we're writing to it)
+		dst := s.rateLimitWriter(conn)
+		bytesTransferred, err := io.Copy(dst, src)
 
 		// Check for cancellation
 		select {
@@ -200,6 +203,8 @@ func (s *session) handleSTOR(path string) {
 		if s.transferType == "A" {
 			src = newASCIIWriter(conn)
 		}
+		// Apply bandwidth limiting
+		src = s.rateLimitReader(src)
 
 		bytesTransferred, err := io.Copy(file, src)
 
@@ -281,6 +286,8 @@ func (s *session) handleAPPE(path string) {
 		if s.transferType == "A" {
 			src = newASCIIWriter(conn)
 		}
+		// Apply bandwidth limiting
+		src = s.rateLimitReader(src)
 
 		bytesTransferred, err := io.Copy(file, src)
 		if err != nil {
@@ -344,6 +351,8 @@ func (s *session) handleSTOU() {
 		if s.transferType == "A" {
 			src = newASCIIWriter(conn)
 		}
+		// Apply bandwidth limiting
+		src = s.rateLimitReader(src)
 
 		bytesTransferred, err := io.Copy(file, src)
 		if err != nil {

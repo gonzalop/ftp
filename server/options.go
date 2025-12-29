@@ -286,3 +286,23 @@ func WithTransferLog(w io.Writer) Option {
 		return nil
 	}
 }
+
+// WithBandwidthLimit sets bandwidth limits for the server.
+// global: maximum total bandwidth across all users (bytes/sec, 0 = unlimited)
+// perUser: maximum bandwidth per user (bytes/sec, 0 = unlimited)
+//
+// When both limits are set, the most restrictive limit applies.
+//
+// Example:
+//
+//	s, _ := server.NewServer(":21",
+//	    server.WithDriver(driver),
+//	    server.WithBandwidthLimit(10*1024*1024, 1024*1024), // 10 MB/s global, 1 MB/s per user
+//	)
+func WithBandwidthLimit(global, perUser int64) Option {
+	return func(s *Server) error {
+		s.bandwidthLimitGlobal = global
+		s.bandwidthLimitPerUser = perUser
+		return nil
+	}
+}

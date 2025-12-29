@@ -13,6 +13,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/gonzalop/ftp/internal/ratelimit"
 )
 
 // Server is the FTP server.
@@ -116,6 +118,11 @@ type Server struct {
 
 	// Transfer logging (xferlog standard format)
 	transferLog io.Writer
+
+	// Bandwidth limiting
+	bandwidthLimitGlobal  int64              // bytes per second, 0 = unlimited
+	bandwidthLimitPerUser int64              // bytes per second, 0 = unlimited
+	globalLimiter         *ratelimit.Limiter // shared across all users
 }
 
 // ErrServerClosed is returned by the Server's Serve, ServeTLS, ListenAndServe,
@@ -180,6 +187,11 @@ func NewServer(addr string, options ...Option) (*Server, error) {
 	// Validate required fields
 	if s.driver == nil {
 		return nil, fmt.Errorf("driver is required (use WithDriver option)")
+	}
+
+	// Initialize global rate limiter if bandwidth limit is set
+	if s.bandwidthLimitGlobal > 0 {
+		s.globalLimiter = ratelimit.New(s.bandwidthLimitGlobal)
 	}
 
 	return s, nil

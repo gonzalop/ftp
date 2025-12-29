@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/gonzalop/ftp/internal/ratelimit"
 )
 
 // MaxCommandLength is the maximum length of a command line.
@@ -92,6 +94,40 @@ func (s *session) redactPath(path string) string {
 // redactIP returns the IP with redaction applied if enabled.
 func (s *session) redactIP(ip string) string {
 	return s.server.redactIP(ip)
+}
+
+// rateLimitReader wraps a reader with bandwidth limiting if configured.
+// Applies both global and per-user limits (most restrictive wins).
+func (s *session) rateLimitReader(r io.Reader) io.Reader {
+	// Apply per-user limit
+	if s.server.bandwidthLimitPerUser > 0 {
+		limiter := ratelimit.New(s.server.bandwidthLimitPerUser)
+		r = ratelimit.NewReader(r, limiter)
+	}
+
+	// Apply global limit (chains with per-user if both set)
+	if s.server.globalLimiter != nil {
+		r = ratelimit.NewReader(r, s.server.globalLimiter)
+	}
+
+	return r
+}
+
+// rateLimitWriter wraps a writer with bandwidth limiting if configured.
+// Applies both global and per-user limits (most restrictive wins).
+func (s *session) rateLimitWriter(w io.Writer) io.Writer {
+	// Apply per-user limit
+	if s.server.bandwidthLimitPerUser > 0 {
+		limiter := ratelimit.New(s.server.bandwidthLimitPerUser)
+		w = ratelimit.NewWriter(w, limiter)
+	}
+
+	// Apply global limit (chains with per-user if both set)
+	if s.server.globalLimiter != nil {
+		w = ratelimit.NewWriter(w, s.server.globalLimiter)
+	}
+
+	return w
 }
 
 // newSession creates a new session.

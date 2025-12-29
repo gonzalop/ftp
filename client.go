@@ -70,6 +70,9 @@ type Client struct {
 
 	// activeDataConn tracks the currently active data connection
 	activeDataConn net.Conn
+
+	// bandwidthLimit is the maximum transfer speed in bytes per second (0 = unlimited)
+	bandwidthLimit int64
 }
 
 // Dial connects to an FTP server at the given address.

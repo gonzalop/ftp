@@ -8,6 +8,8 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/gonzalop/ftp/internal/ratelimit"
 )
 
 // StoreUnique uploads data from an io.Reader to a server-generated unique file.
@@ -35,8 +37,15 @@ func (c *Client) StoreUnique(r io.Reader) (string, error) {
 		filename = msg // Best effort
 	}
 
+	// Apply bandwidth limiting if configured
+	limiter := ratelimit.New(c.bandwidthLimit)
+	if limiter != nil {
+		defer limiter.Stop()
+	}
+	limitedReader := ratelimit.NewReader(r, limiter)
+
 	// Copy data to the connection
-	_, copyErr := io.Copy(dataConn, r)
+	_, copyErr := io.Copy(dataConn, limitedReader)
 
 	// Always finish the data connection (close and read response)
 	finishErr := c.finishDataConn(dataConn)
@@ -76,8 +85,15 @@ func (c *Client) Store(remotePath string, r io.Reader) error {
 		return err
 	}
 
+	// Apply bandwidth limiting if configured
+	limiter := ratelimit.New(c.bandwidthLimit)
+	if limiter != nil {
+		defer limiter.Stop()
+	}
+	limitedReader := ratelimit.NewReader(r, limiter)
+
 	// Copy data to the connection
-	_, copyErr := io.Copy(dataConn, r)
+	_, copyErr := io.Copy(dataConn, limitedReader)
 
 	// Always finish the data connection (close and read response)
 	finishErr := c.finishDataConn(dataConn)
@@ -129,8 +145,15 @@ func (c *Client) Retrieve(remotePath string, w io.Writer) error {
 		return err
 	}
 
+	// Apply bandwidth limiting if configured
+	limiter := ratelimit.New(c.bandwidthLimit)
+	if limiter != nil {
+		defer limiter.Stop()
+	}
+	limitedWriter := ratelimit.NewWriter(w, limiter)
+
 	// Copy data from the connection
-	_, copyErr := io.Copy(w, dataConn)
+	_, copyErr := io.Copy(limitedWriter, dataConn)
 
 	// Always finish the data connection (close and read response)
 	finishErr := c.finishDataConn(dataConn)
@@ -173,8 +196,15 @@ func (c *Client) Append(remotePath string, r io.Reader) error {
 		return err
 	}
 
+	// Apply bandwidth limiting if configured
+	limiter := ratelimit.New(c.bandwidthLimit)
+	if limiter != nil {
+		defer limiter.Stop()
+	}
+	limitedReader := ratelimit.NewReader(r, limiter)
+
 	// Copy data to the connection
-	_, copyErr := io.Copy(dataConn, r)
+	_, copyErr := io.Copy(dataConn, limitedReader)
 
 	// Always finish the data connection (close and read response)
 	finishErr := c.finishDataConn(dataConn)
@@ -253,8 +283,15 @@ func (c *Client) RetrieveFrom(remotePath string, w io.Writer, offset int64) erro
 		return err
 	}
 
+	// Apply bandwidth limiting if configured
+	limiter := ratelimit.New(c.bandwidthLimit)
+	if limiter != nil {
+		defer limiter.Stop()
+	}
+	limitedWriter := ratelimit.NewWriter(w, limiter)
+
 	// Copy data from the connection
-	_, copyErr := io.Copy(w, dataConn)
+	_, copyErr := io.Copy(limitedWriter, dataConn)
 
 	// Always finish the data connection (close and read response)
 	finishErr := c.finishDataConn(dataConn)
@@ -298,8 +335,15 @@ func (c *Client) StoreAt(remotePath string, r io.Reader, offset int64) error {
 		return err
 	}
 
+	// Apply bandwidth limiting if configured
+	limiter := ratelimit.New(c.bandwidthLimit)
+	if limiter != nil {
+		defer limiter.Stop()
+	}
+	limitedReader := ratelimit.NewReader(r, limiter)
+
 	// Copy data to the connection
-	_, copyErr := io.Copy(dataConn, r)
+	_, copyErr := io.Copy(dataConn, limitedReader)
 
 	// Always finish the data connection (close and read response)
 	finishErr := c.finishDataConn(dataConn)

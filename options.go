@@ -158,3 +158,19 @@ func WithCustomListParser(parser ListingParser) Option {
 		return nil
 	}
 }
+
+// WithBandwidthLimit sets the maximum bandwidth for transfers in bytes per second.
+// This applies to both uploads and downloads.
+// Set to 0 for unlimited bandwidth (default).
+//
+// Example:
+//
+//	client, _ := ftp.Dial("ftp.example.com:21",
+//	    ftp.WithBandwidthLimit(1024*1024), // 1 MB/s
+//	)
+func WithBandwidthLimit(bytesPerSecond int64) Option {
+	return func(c *Client) error {
+		c.bandwidthLimit = bytesPerSecond
+		return nil
+	}
+}
