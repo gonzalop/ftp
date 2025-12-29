@@ -2,6 +2,7 @@ package server
 
 import (
 	"io"
+	"net"
 	"os"
 	"time"
 )
@@ -20,7 +21,7 @@ import (
 //
 //	type MyDriver struct{}
 //
-//	func (d *MyDriver) Authenticate(user, pass, host string) (ClientContext, error) {
+//	func (d *MyDriver) Authenticate(user, pass, host string, remoteIP net.IP) (ClientContext, error) {
 //	    if !validateCredentials(user, pass) {
 //	        return nil, os.ErrPermission
 //	    }
@@ -32,11 +33,12 @@ type Driver interface {
 	// Authenticate validates the user and password.
 	// The host parameter contains the value from the HOST command (RFC 7151),
 	// which can be used for virtual hosting. It may be empty if not provided.
+	// The remoteIP parameter contains the client's IP address for IP-based access control.
 	//
 	// Returns:
 	//   - ClientContext: A session-specific context for file operations
 	//   - error: Authentication error (use os.ErrPermission for invalid credentials)
-	Authenticate(user, pass, host string) (ClientContext, error)
+	Authenticate(user, pass, host string, remoteIP net.IP) (ClientContext, error)
 }
 
 // ClientContext is the interface that must be implemented by a driver to handle

@@ -22,7 +22,7 @@ func TestAdminCommands(t *testing.T) {
 
 	// 2. Start Server
 	driver, err := NewFSDriver(rootDir,
-		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil // Allow write access in rootDir
 		}),
 	)
@@ -118,7 +118,7 @@ func TestReadOnlyCommands(t *testing.T) {
 	rootDir := t.TempDir()
 
 	driver, err := NewFSDriver(rootDir,
-		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return rootDir, true, nil // READ ONLY
 		}),
 	)
@@ -187,7 +187,7 @@ func TestNLST(t *testing.T) {
 
 	// 2. Start Server
 	driver, err := NewFSDriver(rootDir,
-		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil
 		}),
 	)
@@ -256,7 +256,7 @@ func TestExtensions_Integration(t *testing.T) {
 	// 1. Setup
 	rootDir := t.TempDir()
 	driver, err := NewFSDriver(rootDir,
-		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil // allow write
 		}),
 	)

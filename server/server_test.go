@@ -28,7 +28,7 @@ func TestServerIntegration(t *testing.T) {
 
 	// 2. Start Server
 	driver, err := NewFSDriver(rootDir,
-		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil // Allow write access in rootDir
 		}),
 	)
@@ -155,7 +155,7 @@ func TestServer_ActiveMode(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	driver, _ := NewFSDriver(rootDir, WithAuthenticator(func(u, p, h string) (string, bool, error) {
+	driver, _ := NewFSDriver(rootDir, WithAuthenticator(func(u, p, h string, _ net.IP) (string, bool, error) {
 		return rootDir, false, nil
 	}))
 
@@ -205,7 +205,7 @@ func TestServer_Restart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	driver, _ := NewFSDriver(rootDir, WithAuthenticator(func(u, p, h string) (string, bool, error) {
+	driver, _ := NewFSDriver(rootDir, WithAuthenticator(func(u, p, h string, _ net.IP) (string, bool, error) {
 		return rootDir, false, nil
 	}))
 

@@ -37,7 +37,7 @@ func TestHostCommand(t *testing.T) {
 
 	rootDir := t.TempDir()
 	receivedHost := ""
-	driver, err := NewFSDriver(rootDir, WithAuthenticator(func(u, p, h string) (string, bool, error) {
+	driver, err := NewFSDriver(rootDir, WithAuthenticator(func(u, p, h string, _ net.IP) (string, bool, error) {
 		receivedHost = h
 		return rootDir, false, nil
 	}))

@@ -19,7 +19,7 @@ func TestPasvPortRange(t *testing.T) {
 	maxPort := 30005
 
 	driver, err := NewFSDriver(rootDir,
-		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil
 		}),
 		WithSettings(&Settings{
@@ -77,9 +77,10 @@ func TestPasvPortRange(t *testing.T) {
 	start := -1
 	end := -1
 	for i, r := range resp.Message {
-		if r == '(' {
+		switch r {
+		case '(':
 			start = i
-		} else if r == ')' {
+		case ')':
 			end = i
 		}
 	}

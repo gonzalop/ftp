@@ -15,7 +15,7 @@ func TestRFC1123Compliance(t *testing.T) {
 
 	// Start Server
 	driver, err := NewFSDriver(rootDir,
-		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil
 		}),
 	)

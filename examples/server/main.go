@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 
@@ -27,7 +28,7 @@ func main() {
 	// This driver handles the filesystem operations for the server.
 	driver, err := server.NewFSDriver(rootPath,
 		// Optional: Implement a custom Authenticator
-		server.WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		server.WithAuthenticator(func(user, pass, host string, remoteIP net.IP) (string, bool, error) {
 			// For this example, we accept any user "user" with password "pass"
 			// AND anonymous access.
 			if user == "user" && pass == "pass" {

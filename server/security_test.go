@@ -41,7 +41,7 @@ func TestSecurity_SymlinkTraversal(t *testing.T) {
 
 	// 2. Start Server
 	driver, err := NewFSDriver(rootDir,
-		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil // allow write
 		}),
 	)
@@ -137,7 +137,7 @@ func TestSecurity_ErrorSanitization(t *testing.T) {
 	realRoot, _ := filepath.EvalSymlinks(rootDir)
 
 	driver, err := NewFSDriver(realRoot,
-		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return realRoot, false, nil
 		}),
 	)

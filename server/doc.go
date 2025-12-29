@@ -113,7 +113,7 @@
 // Custom authentication with per-user directories:
 //
 //	driver, _ := server.NewFSDriver("/tmp/ftp",
-//	    server.WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+//	    server.WithAuthenticator(func(user, pass, host string, remoteIP net.IP) (string, bool, error) {
 //	        // Validate credentials (e.g., check database)
 //	        if !isValidUser(user, pass) {
 //	            return "", false, os.ErrPermission
@@ -129,7 +129,7 @@
 //
 //	driver, _ := server.NewFSDriver("/tmp/ftp",
 //	    server.WithDisableAnonymous(true),
-//	    server.WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+//	    server.WithAuthenticator(func(user, pass, host string, remoteIP net.IP) (string, bool, error) {
 //	        // Only authenticated users allowed
 //	        return validateAndGetUserRoot(user, pass)
 //	    }),

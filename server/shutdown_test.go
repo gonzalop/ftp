@@ -17,7 +17,7 @@ func TestServer_Shutdown(t *testing.T) {
 	// 1. Setup
 	rootDir := t.TempDir()
 	driver, err := NewFSDriver(rootDir,
-		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil
 		}),
 	)
@@ -129,8 +129,8 @@ func (c *BlockingContext) OpenFile(path string, flag int) (io.ReadWriteCloser, e
 	return c.ClientContext.OpenFile(path, flag)
 }
 
-func (d *BlockingDriver) Authenticate(user, pass, host string) (ClientContext, error) {
-	ctx, err := d.FSDriver.Authenticate(user, pass, host)
+func (d *BlockingDriver) Authenticate(user, pass, host string, remoteIP net.IP) (ClientContext, error) {
+	ctx, err := d.FSDriver.Authenticate(user, pass, host, remoteIP)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +142,7 @@ func TestServer_Shutdown_DataConn(t *testing.T) {
 	// 1. Setup
 	rootDir := t.TempDir()
 	baseDriver, err := NewFSDriver(rootDir,
-		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil
 		}),
 	)

@@ -32,7 +32,7 @@ func TestDirectoryMessage(t *testing.T) {
 	}
 
 	driver, err := NewFSDriver(rootDir,
-		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil
 		}),
 	)
@@ -99,7 +99,7 @@ func TestDirectoryMessage(t *testing.T) {
 }
 
 // manualRetrieve performs a RETR using manual PASV/Dial to avoid the client lib forcing Binary mode.
-func manualRetrieve(t *testing.T, c *ftp.Client, path string) ([]byte, error) {
+func manualRetrieve(_ *testing.T, c *ftp.Client, path string) ([]byte, error) {
 	// 1. Enter Passive Mode
 	resp, err := c.Quote("PASV")
 	if err != nil {
@@ -150,7 +150,7 @@ func manualRetrieve(t *testing.T, c *ftp.Client, path string) ([]byte, error) {
 }
 
 // manualStore performs a STOR using manual PASV/Dial
-func manualStore(t *testing.T, c *ftp.Client, path string, content []byte) error {
+func manualStore(_ *testing.T, c *ftp.Client, path string, content []byte) error {
 	// 1. Enter Passive Mode
 	resp, err := c.Quote("PASV")
 	if err != nil {
@@ -203,7 +203,7 @@ func TestASCIIMode(t *testing.T) {
 	}
 
 	driver, err := NewFSDriver(rootDir,
-		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil
 		}),
 	)
@@ -306,7 +306,7 @@ func TestABOR(t *testing.T) {
 	}
 
 	driver, _ := NewFSDriver(rootDir,
-		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil
 		}),
 	)

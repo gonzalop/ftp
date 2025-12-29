@@ -1,5 +1,7 @@
 package server
 
+import "net"
+
 func (s *session) handleUSER(user string) error {
 	s.user = user
 	s.reply(331, "User name okay, need password.")
@@ -7,7 +9,9 @@ func (s *session) handleUSER(user string) error {
 }
 
 func (s *session) handlePASS(pass string) error {
-	ctx, err := s.server.driver.Authenticate(s.user, pass, s.host)
+	// Parse remote IP string to net.IP
+	remoteIP := net.ParseIP(s.remoteIP)
+	ctx, err := s.server.driver.Authenticate(s.user, pass, s.host, remoteIP)
 	if err != nil {
 		// Security audit: failed authentication
 		s.server.logger.Warn("authentication_failed",

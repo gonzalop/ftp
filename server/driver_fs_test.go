@@ -1,6 +1,7 @@
 package server
 
 import (
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -60,7 +61,7 @@ func TestFSDriver_DisableAnonymous(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			_, err = driver.Authenticate(tt.user, "pass", "")
+			_, err = driver.Authenticate(tt.user, "pass", "", nil)
 			if tt.expectError {
 				if err == nil {
 					t.Error("Expected error, got nil")
@@ -134,7 +135,7 @@ func TestFSDriver_CustomAuthenticator(t *testing.T) {
 	}
 
 	driver, err := NewFSDriver(tempDir,
-		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			if user == "admin" && pass == "secret" {
 				return tempDir, false, nil // read-write
 			}
@@ -149,7 +150,7 @@ func TestFSDriver_CustomAuthenticator(t *testing.T) {
 	}
 
 	// Test admin (read-write)
-	ctx, err := driver.Authenticate("admin", "secret", "")
+	ctx, err := driver.Authenticate("admin", "secret", "", nil)
 	if err != nil {
 		t.Errorf("Admin auth failed: %v", err)
 	}
@@ -158,7 +159,7 @@ func TestFSDriver_CustomAuthenticator(t *testing.T) {
 	}
 
 	// Test guest (read-only)
-	ctx, err = driver.Authenticate("guest", "guest", "")
+	ctx, err = driver.Authenticate("guest", "guest", "", nil)
 	if err != nil {
 		t.Errorf("Guest auth failed: %v", err)
 	}
@@ -167,7 +168,7 @@ func TestFSDriver_CustomAuthenticator(t *testing.T) {
 	}
 
 	// Test invalid credentials
-	_, err = driver.Authenticate("invalid", "invalid", "")
+	_, err = driver.Authenticate("invalid", "invalid", "", nil)
 	if err == nil {
 		t.Error("Expected authentication failure for invalid credentials")
 	}
@@ -182,7 +183,7 @@ func TestFSContext_PathSecurity(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx, err := driver.Authenticate("anonymous", "", "")
+	ctx, err := driver.Authenticate("anonymous", "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +227,7 @@ func TestFSContext_FileOperations(t *testing.T) {
 	t.Parallel()
 	tempDir := t.TempDir()
 	driver, err := NewFSDriver(tempDir,
-		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return tempDir, false, nil // read-write
 		}),
 	)
@@ -234,7 +235,7 @@ func TestFSContext_FileOperations(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx, err := driver.Authenticate("user", "pass", "")
+	ctx, err := driver.Authenticate("user", "pass", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +299,7 @@ func TestFSContext_ReadOnly(t *testing.T) {
 	t.Parallel()
 	tempDir := t.TempDir()
 	driver, err := NewFSDriver(tempDir,
-		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return tempDir, true, nil // read-only
 		}),
 	)
@@ -306,7 +307,7 @@ func TestFSContext_ReadOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx, err := driver.Authenticate("readonly", "pass", "")
+	ctx, err := driver.Authenticate("readonly", "pass", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -340,7 +341,7 @@ func TestFSContext_SetTime(t *testing.T) {
 	}
 
 	driver, err := NewFSDriver(tempDir,
-		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return tempDir, false, nil // read-write
 		}),
 	)
@@ -348,7 +349,7 @@ func TestFSContext_SetTime(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx, err := driver.Authenticate("user", "pass", "")
+	ctx, err := driver.Authenticate("user", "pass", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,7 +390,7 @@ func TestFSContext_Chmod(t *testing.T) {
 	}
 
 	driver, err := NewFSDriver(tempDir,
-		WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return tempDir, false, nil // read-write
 		}),
 	)
@@ -397,7 +398,7 @@ func TestFSContext_Chmod(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx, err := driver.Authenticate("user", "pass", "")
+	ctx, err := driver.Authenticate("user", "pass", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -444,7 +445,7 @@ func TestFSContext_GetHash(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx, err := driver.Authenticate("anonymous", "", "")
+	ctx, err := driver.Authenticate("anonymous", "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

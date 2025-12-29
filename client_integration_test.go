@@ -58,7 +58,7 @@ func setupServer(t *testing.T) (string, func(), string) {
 
 	// 2. Start Server
 	driver, err := server.NewFSDriver(rootDir,
-		server.WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		server.WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil // Allow write access in rootDir
 		}),
 	)
@@ -193,7 +193,7 @@ func TestClient_ExplicitTLS(t *testing.T) {
 	// 2. Start Server with TLS support
 	rootDir := t.TempDir()
 	driver, err := server.NewFSDriver(rootDir,
-		server.WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		server.WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil // Allow write access
 		}),
 	)
@@ -269,7 +269,7 @@ func TestClient_ImplicitTLS(t *testing.T) {
 	// 2. Start Server with TLS support
 	rootDir := t.TempDir()
 	driver, err := server.NewFSDriver(rootDir,
-		server.WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		server.WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil // Allow write access
 		}),
 	)
@@ -418,7 +418,7 @@ func TestClient_ActiveModeIPv6(t *testing.T) {
 
 	// 2. Start Server
 	driver, err := server.NewFSDriver(rootDir,
-		server.WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		server.WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil // Allow write access in rootDir
 		}),
 	)
@@ -1115,7 +1115,7 @@ func TestConnect_FTPS(t *testing.T) {
 	// 2. Start Server with Implicit TLS support
 	rootDir := t.TempDir()
 	driver, err := server.NewFSDriver(rootDir,
-		server.WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		server.WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil
 		}),
 	)
@@ -1184,7 +1184,7 @@ func TestConnect_FTPExplicit(t *testing.T) {
 	// 2. Start Server
 	rootDir := t.TempDir()
 	driver, err := server.NewFSDriver(rootDir,
-		server.WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		server.WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil
 		}),
 	)
@@ -1315,7 +1315,7 @@ func TestClient_QuitAbortsTransfer(t *testing.T) {
 func TestConnect(t *testing.T) {
 	// Start a test server with permissive auth
 	rootDir := t.TempDir()
-	driver, err := server.NewFSDriver(rootDir, server.WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+	driver, err := server.NewFSDriver(rootDir, server.WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 		return rootDir, false, nil // false = write access
 	}))
 	if err != nil {
@@ -1399,7 +1399,7 @@ func TestConnect(t *testing.T) {
 
 func TestUploadDownloadFile(t *testing.T) {
 	rootDir := t.TempDir()
-	driver, err := server.NewFSDriver(rootDir, server.WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+	driver, err := server.NewFSDriver(rootDir, server.WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 		return rootDir, false, nil // Write access
 	}))
 	if err != nil {
@@ -1583,7 +1583,7 @@ func startServer(t *testing.T) (string, *server.Server, string) {
 	rootDir := t.TempDir()
 
 	driver, err := server.NewFSDriver(rootDir,
-		server.WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+		server.WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil
 		}),
 	)

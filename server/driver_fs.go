@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,9 +39,9 @@ type FSDriver struct {
 	// authenticator is an optional hook to validate credentials and return the
 	// root path for the user. If nil, defaults to strict anonymous-only, read-only access,
 	// unless disableAnonymous is true.
-	// Arguments: user, pass, host
+	// Arguments: user, pass, host, remoteIP
 	// Returns: rootPath, readOnly, error
-	authenticator func(user, pass, host string) (string, bool, error)
+	authenticator func(user, pass, host string, remoteIP net.IP) (string, bool, error)
 
 	// disableAnonymous, if true, prevents the default behavior of allowing anonymous
 	// logins when no authenticator is provided.
@@ -80,7 +81,7 @@ type FSDriverOption func(*FSDriver)
 // With custom authentication:
 //
 //	driver, err := server.NewFSDriver("/tmp/ftp",
-//	    server.WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+//	    server.WithAuthenticator(func(user, pass, host string, remoteIP net.IP) (string, bool, error) {
 //	        if user == "admin" && pass == "secret" {
 //	            return "/tmp/ftp", false, nil // read-write access
 //	        }
@@ -93,7 +94,7 @@ type FSDriverOption func(*FSDriver)
 // With per-user directories:
 //
 //	driver, err := server.NewFSDriver("/home",
-//	    server.WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+//	    server.WithAuthenticator(func(user, pass, host string, remoteIP net.IP) (string, bool, error) {
 //	        if validateUser(user, pass) {
 //	            userDir := filepath.Join("/home", user)
 //	            return userDir, false, nil
@@ -134,6 +135,7 @@ func NewFSDriver(rootPath string, options ...FSDriverOption) (*FSDriver, error) 
 //   - user: username from USER command
 //   - pass: password from PASS command
 //   - host: hostname from HOST command (may be empty)
+//   - remoteIP: client IP address (net.IP) for IP-based access control
 //
 // The function should return:
 //   - rootPath: the root directory for this user (must exist)
@@ -142,14 +144,14 @@ func NewFSDriver(rootPath string, options ...FSDriverOption) (*FSDriver, error) 
 //
 // Example with database lookup:
 //
-//	server.WithAuthenticator(func(user, pass, host string) (string, bool, error) {
+//	server.WithAuthenticator(func(user, pass, host string, remoteIP net.IP) (string, bool, error) {
 //	    dbUser, err := db.ValidateUser(user, pass)
 //	    if err != nil {
 //	        return "", false, os.ErrPermission
 //	    }
 //	    return dbUser.HomeDir, dbUser.ReadOnly, nil
 //	})
-func WithAuthenticator(fn func(user, pass, host string) (string, bool, error)) FSDriverOption {
+func WithAuthenticator(fn func(user, pass, host string, remoteIP net.IP) (string, bool, error)) FSDriverOption {
 	return func(d *FSDriver) {
 		d.authenticator = fn
 	}
@@ -204,13 +206,13 @@ func WithSettings(settings *Settings) FSDriverOption {
 // Authenticate returns a new FSContext for the user.
 // It uses the authenticator hook if provided. Otherwise, it enforces strict
 // anonymous-only, read-only access rooted at the root path.
-func (d *FSDriver) Authenticate(user, pass, host string) (ClientContext, error) {
+func (d *FSDriver) Authenticate(user, pass, host string, remoteIP net.IP) (ClientContext, error) {
 	rootPath := d.rootPath
 	readOnly := false
 
 	if d.authenticator != nil {
 		var err error
-		rootPath, readOnly, err = d.authenticator(user, pass, host)
+		rootPath, readOnly, err = d.authenticator(user, pass, host, remoteIP)
 		if err != nil {
 			return nil, err
 		}
