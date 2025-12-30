@@ -3,7 +3,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/gonzalop/ftp.svg)](https://pkg.go.dev/github.com/gonzalop/ftp)
 [![Tests](https://github.com/gonzalop/ftp/workflows/Tests/badge.svg)](https://github.com/gonzalop/ftp/actions)
 [![Go Report Card](https://goreportcard.com/badge/github.com/gonzalop/ftp)](https://goreportcard.com/report/github.com/gonzalop/ftp)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](http://unlicense.org/)
 
 A production-ready FTP library for Go providing both **client** and **server** implementations with extensive RFC compliance, TLS support, and modern extensions.
 
@@ -132,7 +132,12 @@ Both client and server implement modern FTP standards:
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details
+This software is available under 2 licenses -- choose whichever you prefer:
+
+1. MIT License
+2. Public Domain (Unlicense)
+
+See [LICENSE](LICENSE) for details.
 
 ## Contributing
 
