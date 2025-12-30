@@ -29,9 +29,6 @@ func TestNew(t *testing.T) {
 			if !tt.expectNil && limiter == nil {
 				t.Errorf("Expected non-nil limiter for rate %d, got nil", tt.bytesPerSecond)
 			}
-			if limiter != nil {
-				// No cleanup needed
-			}
 		})
 	}
 }
