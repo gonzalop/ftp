@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bufio"
 	"bytes"
+
 	"context"
 	"fmt"
 	"io"
@@ -501,7 +503,7 @@ func rawLogin(addr, user, pass string) (*textConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	tc := &textConn{conn}
+	tc := &textConn{Conn: conn, Reader: bufio.NewReader(conn)}
 
 	// Read greeting
 	if _, _, err := rawReadResponse(tc); err != nil {
@@ -549,18 +551,17 @@ func rawEnterPasv(c *textConn) (string, error) {
 
 type textConn struct {
 	net.Conn
+	Reader *bufio.Reader
 }
 
 func rawReadResponse(c *textConn) (int, string, error) {
 	if err := c.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		return 0, "", err
 	}
-	buf := make([]byte, 1024)
-	n, err := c.Read(buf)
+	line, err := c.Reader.ReadString('\n')
 	if err != nil {
 		return 0, "", err
 	}
-	line := string(buf[:n])
 	var code int
 	_, _ = fmt.Sscanf(line, "%d", &code)
 	return code, line, nil
