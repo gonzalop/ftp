@@ -434,7 +434,24 @@ func (c *Client) Login(username, password string) error {
 	return nil
 }
 
-// Quit closes the connection gracefully by sending the QUIT command.
+// NoOp sends a NOOP command to the server.
+// This is useful for keeping the connection alive and preventing the server
+// from closing an idle connection. The automatic keep-alive mechanism handles
+// this automatically when WithIdleTimeout is used, but this method allows
+// manual control when needed.
+//
+// Example:
+//
+//	err := client.NoOp()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+func (c *Client) NoOp() error {
+	_, err := c.expect2xx("NOOP")
+	return err
+}
+
+// Quit sends the QUIT command and closes the connection.
 // If a file transfer is in progress, it will be aborted by closing the data connection.
 func (c *Client) Quit() error {
 	if c.conn == nil {
@@ -610,6 +627,10 @@ func (c *Client) SetOption(option, value string) error {
 // Noop sends a NOOP (no operation) command to the server.
 // This is useful as a keepalive to prevent the connection from timing out
 // during long operations or idle periods.
+//
+// Note: If you use WithIdleTimeout when creating the client, automatic
+// keep-alive is handled for you. This method is for manual control when
+// automatic keep-alive is not used or when you need explicit control.
 //
 // Example:
 //

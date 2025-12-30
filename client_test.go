@@ -72,7 +72,7 @@ func newMockServer(t *testing.T) *mockServer {
 	}
 }
 
-func (s *mockServer) start(t *testing.T) {
+func (s *mockServer) start() {
 	go func() {
 		defer close(s.done)
 		conn, err := s.listener.Accept()
@@ -172,7 +172,7 @@ func TestClient_EPSV_Fallback(t *testing.T) {
 		_ = c.PrintfLine("226 Closing data connection.")
 	}
 
-	ms.start(t)
+	ms.start()
 	defer ms.stop()
 
 	c, err := Dial(ms.addr, WithTimeout(1*time.Second))
@@ -238,7 +238,7 @@ func TestClient_EPSV_Success(t *testing.T) {
 		_ = c.PrintfLine("226 Closing data connection.")
 	}
 
-	ms.start(t)
+	ms.start()
 	defer ms.stop()
 
 	c, err := Dial(ms.addr, WithTimeout(1*time.Second))
@@ -313,7 +313,7 @@ func TestClient_EPSV_FailButNot502(t *testing.T) {
 		_ = c.PrintfLine("226 Closing data connection.")
 	}
 
-	ms.start(t)
+	ms.start()
 	defer ms.stop()
 
 	c, err := Dial(ms.addr, WithTimeout(1*time.Second))

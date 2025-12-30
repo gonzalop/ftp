@@ -352,11 +352,12 @@ func isNumericPerms(perms string) bool {
 
 func parseUnixType(perms string, isSymbolic bool) string {
 	if isSymbolic {
-		if perms[0] == 'd' {
+		switch perms[0] {
+		case 'd':
 			return "dir"
-		} else if perms[0] == 'l' {
+		case 'l':
 			return "link"
-		} else {
+		default:
 			return "file"
 		}
 	}
@@ -618,6 +619,63 @@ func (c *Client) MakeDir(path string) error {
 func (c *Client) RemoveDir(path string) error {
 	_, err := c.expect2xx("RMD", path)
 	return err
+}
+
+// RemoveDirRecursive removes a directory and all its contents recursively.
+// It walks the directory tree in post-order (children before parents) to ensure
+// files are deleted before their containing directories.
+//
+// Example:
+//
+//	err := client.RemoveDirRecursive("/old_project")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+func (c *Client) RemoveDirRecursive(dirPath string) error {
+	// Collect all entries to delete in reverse order (files first, then dirs)
+	var toDelete []struct {
+		path  string
+		isDir bool
+	}
+
+	// Walk the directory tree
+	err := c.Walk(dirPath, func(path string, info *Entry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Add to deletion list (will be processed in reverse)
+		toDelete = append(toDelete, struct {
+			path  string
+			isDir bool
+		}{
+			path:  path,
+			isDir: info.Type == "dir",
+		})
+
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to walk directory: %w", err)
+	}
+
+	// Delete in reverse order (deepest files first, then directories)
+	for i := len(toDelete) - 1; i >= 0; i-- {
+		entry := toDelete[i]
+
+		if entry.isDir {
+			if err := c.RemoveDir(entry.path); err != nil {
+				return fmt.Errorf("failed to remove directory %s: %w", entry.path, err)
+			}
+		} else {
+			if err := c.Delete(entry.path); err != nil {
+				return fmt.Errorf("failed to delete file %s: %w", entry.path, err)
+			}
+		}
+	}
+
+	return nil
 }
 
 // Delete deletes a file.
