@@ -30,6 +30,7 @@ func (m *mockMetricsCollector) RecordAuthentication(success bool, user string) {
 }
 
 func TestWithMetricsCollector(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	driver, _ := NewFSDriver(tempDir)
 	mock := &mockMetricsCollector{}
@@ -48,6 +49,7 @@ func TestWithMetricsCollector(t *testing.T) {
 }
 
 func TestMetricsCollectorNilSafe(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	driver, _ := NewFSDriver(tempDir)
 

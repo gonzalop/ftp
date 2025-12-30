@@ -10,6 +10,7 @@ import (
 )
 
 func TestParseFeatureLines_RFC2389(t *testing.T) {
+	t.Parallel()
 	// RFC 2389 format with space-prefixed feature lines
 	lines := []string{
 		"211-Extensions supported:",
@@ -134,6 +135,7 @@ func (s *mockServer) stop() {
 }
 
 func TestClient_EPSV_Fallback(t *testing.T) {
+	t.Parallel()
 	ms := newMockServer(t)
 
 	// Setup PASV listener
@@ -212,6 +214,7 @@ func TestClient_EPSV_Fallback(t *testing.T) {
 }
 
 func TestClient_EPSV_Success(t *testing.T) {
+	t.Parallel()
 	ms := newMockServer(t)
 
 	// Setup EPSV listener
@@ -274,6 +277,7 @@ func TestClient_EPSV_Success(t *testing.T) {
 }
 
 func TestClient_EPSV_FailButNot502(t *testing.T) {
+	t.Parallel()
 	// Verify that if it fails with something other than 502, we don't permanently disable it.
 	// The current logic only disables on 502. If it's another error, we fallback to PASV for that request but not set the disable flag.
 	// So if EPSV returns 500, disableEPSV is NOT set, and we DO fallback to PASV.

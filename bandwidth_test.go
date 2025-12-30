@@ -12,6 +12,7 @@ import (
 )
 
 func TestClient_BandwidthLimit(t *testing.T) {
+	t.Parallel()
 	addr, cleanup, _ := setupServer(t)
 	defer cleanup()
 
@@ -83,6 +84,7 @@ func TestClient_BandwidthLimit(t *testing.T) {
 }
 
 func TestServer_BandwidthLimit(t *testing.T) {
+	t.Parallel()
 	rootDir := t.TempDir()
 
 	driver, err := server.NewFSDriver(rootDir,

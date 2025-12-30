@@ -10,6 +10,7 @@ import (
 )
 
 func TestRFC1123Compliance(t *testing.T) {
+	t.Parallel()
 	rootDir := t.TempDir()
 
 	driver, err := NewFSDriver(rootDir,

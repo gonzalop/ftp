@@ -1,40 +1,37 @@
-.PHONY: all fmt lint build test test-race fuzz coverage
+.PHONY: all fmt lint build test fuzz coverage
 
 all: fmt lint build test
 
 fmt:
-	@if command -v gofmt >/dev/null 2>&1; then \
-		echo "Running gofmt..."; \
-		gofmt -w .; \
-	else \
-		echo "gofmt not installed, skipping"; \
-	fi
+	@echo "🖌️  Formatting: gofmt -w ."
+	@gofmt -w .
 
 lint:
 	@if command -v golangci-lint >/dev/null 2>&1; then \
-		echo "Running golangci-lint..."; \
+		echo "🔍 Linting: golangci-lint run"; \
 		golangci-lint run; \
 	else \
-		echo "golangci-lint not installed, skipping"; \
+		echo "⚠️  golangci-lint not installed, skipping"; \
+		echo "   To install: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
 	fi
+	@echo "🔍 Linting: go vet ./..."
+	@go vet ./...
 
 build:
-	@echo "Building..."
-	go build -v ./...
+	@echo "🏗️  Building: go build ./..."
+	@go build ./...
 
 test:
-	@echo "Running tests..."
-	go test -race -v ./...
+	@echo "🧪 Testing: go test -race ./..."
+	@go test -race ./...
 
 fuzz:
-	@echo "Running fuzz tests..."
-	# Fuzz directory listing parser (run for 10 seconds)
+	@echo "🌀 Running fuzz tests..."
 	go test -fuzz=FuzzParseListLine -fuzztime=10s
-	# Fuzz feature parser (run for 10 seconds)
 	go test -fuzz=FuzzParseFeatures -fuzztime=10s
 
 coverage:
-	@echo "Generating coverage report..."
+	@echo "📊 Generating coverage report..."
 	go test -coverprofile=coverage.out -coverpkg=./... ./...
 	go tool cover -html=coverage.out -o coverage.html
-	@echo "Coverage report generated at coverage.html"
+	@echo "✅ Coverage report generated at coverage.html"

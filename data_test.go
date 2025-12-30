@@ -7,6 +7,7 @@ import (
 )
 
 func TestResolveDataAddr(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		pasvAddr    string
@@ -44,6 +45,7 @@ func TestResolveDataAddr(t *testing.T) {
 }
 
 func TestFormatEPRT(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		addr    string
@@ -82,6 +84,7 @@ func TestFormatEPRT(t *testing.T) {
 }
 
 func TestActiveDataConn_Coverage(t *testing.T) {
+	t.Parallel()
 	// Setup a dummy listener
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

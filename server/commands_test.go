@@ -17,47 +17,8 @@ import (
 // TestAdminCommands performs integration tests for MKD, RMD, DELE, APPE.
 func TestAdminCommands(t *testing.T) {
 	t.Parallel()
-	// 1. Setup temporary directory for server root
-	rootDir := t.TempDir()
-
-	// 2. Start Server
-	driver, err := NewFSDriver(rootDir,
-		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
-			return rootDir, false, nil // Allow write access in rootDir
-		}),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := ln.Addr().String()
-
-	server, err := NewServer(addr, WithDriver(driver))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Run server in goroutine
-	go func() {
-		if err := server.Serve(ln); err != nil && err != ErrServerClosed {
-			t.Logf("Server stopped: %v", err)
-		}
-	}()
-
-	// 3. Connect with Client
-	c, err := ftp.Dial(addr, ftp.WithTimeout(2*time.Second))
-	if err != nil {
-		t.Fatalf("Failed to dial: %v", err)
-	}
-
-	// 4. Authenticate
-	if err := c.Login("admin", "admin"); err != nil {
-		t.Fatalf("Login failed: %v", err)
-	}
+	c, rootDir, teardown := setupTestServer(t, false)
+	defer teardown()
 
 	// Test MKD
 	newDir := "new_folder"
@@ -115,46 +76,8 @@ func TestAdminCommands(t *testing.T) {
 
 func TestReadOnlyCommands(t *testing.T) {
 	t.Parallel()
-	rootDir := t.TempDir()
-
-	driver, err := NewFSDriver(rootDir,
-		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
-			return rootDir, true, nil // READ ONLY
-		}),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := ln.Addr().String()
-
-	server, err := NewServer(addr, WithDriver(driver))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	go func() {
-		if err := server.Serve(ln); err != nil && err != ErrServerClosed {
-			t.Logf("Server stopped: %v", err)
-		}
-	}()
-
-	c, err := ftp.Dial(addr, ftp.WithTimeout(5*time.Second))
-	if err != nil {
-		t.Fatalf("Failed to dial: %v", err)
-	}
-	// Clean up
-	defer func() {
-		_ = c.Quit()
-	}()
-
-	if err := c.Login("readonly", "readonly"); err != nil {
-		t.Fatalf("Login failed: %v", err)
-	}
+	c, _, teardown := setupTestServer(t, true)
+	defer teardown()
 
 	// Test MKD
 	if err := c.MakeDir("foo"); err == nil {
@@ -174,8 +97,9 @@ func TestReadOnlyCommands(t *testing.T) {
 }
 
 func TestNLST(t *testing.T) {
-	// 1. Setup temporary directory for server root
-	rootDir := t.TempDir()
+	t.Parallel()
+	c, rootDir, teardown := setupTestServer(t, false)
+	defer teardown()
 
 	// Create some files
 	files := []string{"file1.txt", "file2.log", "image.png"}
@@ -183,47 +107,6 @@ func TestNLST(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(rootDir, f), []byte("content"), 0644); err != nil {
 			t.Fatal(err)
 		}
-	}
-
-	// 2. Start Server
-	driver, err := NewFSDriver(rootDir,
-		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
-			return rootDir, false, nil
-		}),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := ln.Addr().String()
-
-	server, err := NewServer(addr, WithDriver(driver))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Run server in goroutine
-	go func() {
-		if err := server.Serve(ln); err != nil && err != ErrServerClosed {
-			t.Logf("Server stopped: %v", err)
-		}
-	}()
-
-	// 3. Connect with Client
-	c, err := ftp.Dial(addr, ftp.WithTimeout(2*time.Second))
-	if err != nil {
-		t.Fatalf("Failed to dial: %v", err)
-	}
-	defer func() {
-		_ = c.Quit()
-	}()
-
-	if err := c.Login("test", "test"); err != nil {
-		t.Fatalf("Login failed: %v", err)
 	}
 
 	// 4. Test NLST
@@ -253,55 +136,9 @@ func TestNLST(t *testing.T) {
 }
 
 func TestExtensions_Integration(t *testing.T) {
-	// 1. Setup
-	rootDir := t.TempDir()
-	driver, err := NewFSDriver(rootDir,
-		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
-			return rootDir, false, nil // allow write
-		}),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := ln.Addr().String()
-
-	server, err := NewServer(addr, WithDriver(driver))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	go func() {
-		if err := server.Serve(ln); err != nil && err != ErrServerClosed {
-			t.Logf("Server stopped: %v", err)
-		}
-	}()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		if err := server.Shutdown(ctx); err != nil {
-			t.Logf("Shutdown error: %v", err)
-		}
-	}()
-
-	// 2. Connect
-	c, err := ftp.Dial(addr, ftp.WithTimeout(2*time.Second))
-	if err != nil {
-		t.Fatalf("Dial failed: %v", err)
-	}
-	defer func() {
-		if err := c.Quit(); err != nil {
-			t.Logf("Quit error: %v", err)
-		}
-	}()
-
-	if err := c.Login("user", "pass"); err != nil {
-		t.Fatalf("Login failed: %v", err)
-	}
+	t.Parallel()
+	c, rootDir, teardown := setupTestServer(t, false)
+	defer teardown()
 
 	// 3. Test SITE CHMOD
 	filename := "chmod_test.txt"
@@ -339,4 +176,54 @@ func TestExtensions_Integration(t *testing.T) {
 	if !info.ModTime().Equal(newTime) {
 		t.Errorf("ModTime mismatch: got %v, want %v", info.ModTime(), newTime)
 	}
+}
+
+func setupTestServer(t *testing.T, readOnly bool) (*ftp.Client, string, func()) {
+	rootDir := t.TempDir()
+
+	driver, err := NewFSDriver(rootDir,
+		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
+			return rootDir, readOnly, nil
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+
+	server, err := NewServer(addr, WithDriver(driver))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	go func() {
+		if err := server.Serve(ln); err != nil && err != ErrServerClosed {
+			t.Logf("Server stopped: %v", err)
+		}
+	}()
+
+	c, err := ftp.Dial(addr, ftp.WithTimeout(2*time.Second))
+	if err != nil {
+		t.Fatalf("Failed to dial: %v", err)
+	}
+
+	if err := c.Login("test", "test"); err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+
+	teardown := func() {
+		_ = c.Quit()
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := server.Shutdown(ctx); err != nil {
+			t.Logf("Shutdown error: %v", err)
+		}
+	}
+
+	return c, rootDir, teardown
 }

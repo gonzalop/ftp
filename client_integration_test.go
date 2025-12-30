@@ -183,6 +183,7 @@ func generateCert(t *testing.T, isCA bool, caCert *x509.Certificate, caKey *rsa.
 }
 
 func TestClient_ExplicitTLS(t *testing.T) {
+	t.Parallel()
 	// 1. Generate Server Cert
 	serverCertPath, serverKeyPath, _, _ := generateCert(t, false, nil, nil)
 	serverTLSConfig, err := tls.LoadX509KeyPair(serverCertPath, serverKeyPath)
@@ -259,6 +260,7 @@ func TestClient_ExplicitTLS(t *testing.T) {
 }
 
 func TestClient_ImplicitTLS(t *testing.T) {
+	t.Parallel()
 	// 1. Generate Server Cert
 	serverCertPath, serverKeyPath, _, _ := generateCert(t, false, nil, nil)
 	serverTLSConfig, err := tls.LoadX509KeyPair(serverCertPath, serverKeyPath)
@@ -338,6 +340,7 @@ func TestClient_ImplicitTLS(t *testing.T) {
 }
 
 func TestClient_KeepAlive(t *testing.T) {
+	t.Parallel()
 	addr, cleanup, _ := setupServer(t)
 	defer cleanup()
 
@@ -378,6 +381,7 @@ func TestClient_KeepAlive(t *testing.T) {
 }
 
 func TestClient_ActiveMode(t *testing.T) {
+	t.Parallel()
 	addr, cleanup, _ := setupServer(t)
 	defer cleanup()
 
@@ -407,6 +411,7 @@ func TestClient_ActiveMode(t *testing.T) {
 }
 
 func TestClient_ActiveModeIPv6(t *testing.T) {
+	t.Parallel()
 	// Try to create an IPv6 listener for the server
 	l, err := net.Listen("tcp6", "[::1]:0")
 	if err != nil {
@@ -473,6 +478,7 @@ func TestClient_ActiveModeIPv6(t *testing.T) {
 }
 
 func TestClient_PASV(t *testing.T) {
+	t.Parallel()
 	addr, cleanup, _ := setupServer(t)
 	defer cleanup()
 
@@ -513,6 +519,7 @@ func TestClient_PASV(t *testing.T) {
 }
 
 func TestClient_Integration(t *testing.T) {
+	t.Parallel()
 	addr, cleanup, rootDir := setupServer(t)
 	defer cleanup()
 
@@ -936,6 +943,7 @@ func testResumeOperations(t *testing.T, c *ftp.Client, rootDir string) {
 }
 
 func TestServerCoverage_AdditionalBranches(t *testing.T) {
+	t.Parallel()
 	addr, cleanup, _ := setupServer(t)
 	defer cleanup()
 
@@ -1065,6 +1073,7 @@ func testMiscCommandCoverage(t *testing.T, c *ftp.Client) {
 }
 
 func TestServerCoverage_NoAuth(t *testing.T) {
+	t.Parallel()
 	addr, cleanup, _ := setupServer(t)
 	defer cleanup()
 
@@ -1089,6 +1098,7 @@ func TestServerCoverage_NoAuth(t *testing.T) {
 }
 
 func TestAuthenticationFailure(t *testing.T) {
+	t.Parallel()
 	rootDir := t.TempDir()
 
 	// Create driver with authenticator that validates passwords
@@ -1160,6 +1170,7 @@ func TestAuthenticationFailure(t *testing.T) {
 }
 
 func TestConnect_FTP(t *testing.T) {
+	t.Parallel()
 	addr, cleanup, _ := setupServer(t)
 	defer cleanup()
 
@@ -1190,6 +1201,7 @@ func TestConnect_FTP(t *testing.T) {
 }
 
 func TestConnect_Login(t *testing.T) {
+	t.Parallel()
 	addr, cleanup, _ := setupServer(t)
 	defer cleanup()
 
@@ -1216,6 +1228,7 @@ func TestConnect_Login(t *testing.T) {
 }
 
 func TestConnect_FTPS(t *testing.T) {
+	t.Parallel()
 	// 1. Generate Server Cert
 	serverCertPath, serverKeyPath, _, _ := generateCert(t, false, nil, nil)
 	serverTLSConfig, err := tls.LoadX509KeyPair(serverCertPath, serverKeyPath)
@@ -1285,6 +1298,7 @@ func TestConnect_FTPS(t *testing.T) {
 }
 
 func TestConnect_FTPExplicit(t *testing.T) {
+	t.Parallel()
 	// 1. Generate Server Cert
 	serverCertPath, serverKeyPath, _, _ := generateCert(t, false, nil, nil)
 	serverTLSConfig, err := tls.LoadX509KeyPair(serverCertPath, serverKeyPath)
@@ -1359,6 +1373,7 @@ func (s *SlowReader) Read(p []byte) (n int, err error) {
 }
 
 func TestClient_QuitAbortsTransfer(t *testing.T) {
+	t.Parallel()
 	addr, cleanup, _ := setupServer(t)
 	defer cleanup()
 
@@ -1424,6 +1439,7 @@ func TestClient_QuitAbortsTransfer(t *testing.T) {
 }
 
 func TestConnect(t *testing.T) {
+	t.Parallel()
 	// Start a test server with permissive auth
 	rootDir := t.TempDir()
 	driver, err := server.NewFSDriver(rootDir, server.WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
@@ -1509,6 +1525,7 @@ func TestConnect(t *testing.T) {
 }
 
 func TestUploadDownloadFile(t *testing.T) {
+	t.Parallel()
 	rootDir := t.TempDir()
 	driver, err := server.NewFSDriver(rootDir, server.WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 		return rootDir, false, nil // Write access
@@ -1579,6 +1596,7 @@ func TestUploadDownloadFile(t *testing.T) {
 }
 
 func TestRecursiveHelpers(t *testing.T) {
+	t.Parallel()
 	// Start server
 	addr, s, rootDir := startServer(t)
 	defer func() {

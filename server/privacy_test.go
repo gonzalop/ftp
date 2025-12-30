@@ -6,6 +6,7 @@ import (
 )
 
 func TestRedactPath(t *testing.T) {
+	t.Parallel()
 	// Helper function for standard middle component redaction
 	redactMiddle := func(path string) string {
 		if path == "" {
@@ -48,6 +49,7 @@ func TestRedactPath(t *testing.T) {
 }
 
 func TestRedactIP(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		enabled  bool
@@ -73,6 +75,7 @@ func TestRedactIP(t *testing.T) {
 }
 
 func TestWithPathRedactor(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	driver, _ := NewFSDriver(tempDir)
 
@@ -94,6 +97,7 @@ func TestWithPathRedactor(t *testing.T) {
 }
 
 func TestWithRedactIPs(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	driver, _ := NewFSDriver(tempDir)
 

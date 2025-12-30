@@ -57,9 +57,7 @@ func TestFSDriver_DisableAnonymous(t *testing.T) {
 			driver, err := NewFSDriver(tempDir,
 				WithDisableAnonymous(tt.disableAnonymous),
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
+			fatalIfErr(t, err, "Failed to create FS driver")
 
 			_, err = driver.Authenticate(tt.user, "pass", "", nil)
 			if tt.expectError {
@@ -102,9 +100,7 @@ func TestNewFSDriver_Validation(t *testing.T) {
 			setupPath: func(t *testing.T) string {
 				dir := t.TempDir()
 				file := filepath.Join(dir, "file.txt")
-				if err := os.WriteFile(file, []byte("test"), 0644); err != nil {
-					t.Fatal(err)
-				}
+				fatalIfErr(t, os.WriteFile(file, []byte("test"), 0644), "Failed to write file")
 				return file
 			},
 			expectError: true,
@@ -130,9 +126,7 @@ func TestFSDriver_CustomAuthenticator(t *testing.T) {
 	t.Parallel()
 	tempDir := t.TempDir()
 	userDir := filepath.Join(tempDir, "user1")
-	if err := os.MkdirAll(userDir, 0755); err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, os.MkdirAll(userDir, 0755), "Failed to create user dir")
 
 	driver, err := NewFSDriver(tempDir,
 		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
@@ -145,9 +139,7 @@ func TestFSDriver_CustomAuthenticator(t *testing.T) {
 			return "", false, os.ErrPermission
 		}),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to create FS driver")
 
 	// Test admin (read-write)
 	ctx, err := driver.Authenticate("admin", "secret", "", nil)
@@ -179,23 +171,15 @@ func TestFSContext_PathSecurity(t *testing.T) {
 	t.Parallel()
 	tempDir := t.TempDir()
 	driver, err := NewFSDriver(tempDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to create FS driver")
 
 	ctx, err := driver.Authenticate("anonymous", "", "", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to authenticate")
 	defer ctx.Close()
 
 	// Create a test directory structure
-	if err := os.MkdirAll(filepath.Join(tempDir, "subdir"), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(tempDir, "file.txt"), []byte("test"), 0644); err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, os.MkdirAll(filepath.Join(tempDir, "subdir"), 0755), "Failed to create subdir")
+	fatalIfErr(t, os.WriteFile(filepath.Join(tempDir, "file.txt"), []byte("test"), 0644), "Failed to write file")
 
 	tests := []struct {
 		name        string
@@ -231,14 +215,10 @@ func TestFSContext_FileOperations(t *testing.T) {
 			return tempDir, false, nil // read-write
 		}),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to create FS driver")
 
 	ctx, err := driver.Authenticate("user", "pass", "", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to authenticate")
 	defer ctx.Close()
 
 	// Test MakeDir
@@ -255,9 +235,7 @@ func TestFSContext_FileOperations(t *testing.T) {
 
 	// Test file creation
 	f, err := ctx.OpenFile("/test.txt", os.O_CREATE|os.O_WRONLY)
-	if err != nil {
-		t.Fatalf("OpenFile failed: %v", err)
-	}
+	fatalIfErr(t, err, "OpenFile failed")
 	if _, err := f.Write([]byte("test content")); err != nil {
 		t.Fatalf("Write failed: %v", err)
 	}
@@ -265,9 +243,7 @@ func TestFSContext_FileOperations(t *testing.T) {
 
 	// Test file reading
 	f, err = ctx.OpenFile("/test.txt", os.O_RDONLY)
-	if err != nil {
-		t.Fatalf("OpenFile for reading failed: %v", err)
-	}
+	fatalIfErr(t, err, "OpenFile for reading failed")
 	buf := make([]byte, 100)
 	n, _ := f.Read(buf)
 	f.Close()
@@ -303,14 +279,10 @@ func TestFSContext_ReadOnly(t *testing.T) {
 			return tempDir, true, nil // read-only
 		}),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to create FS driver")
 
 	ctx, err := driver.Authenticate("readonly", "pass", "", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to authenticate")
 	defer ctx.Close()
 
 	// All write operations should fail
@@ -336,23 +308,17 @@ func TestFSContext_SetTime(t *testing.T) {
 	t.Parallel()
 	tempDir := t.TempDir()
 	testFile := filepath.Join(tempDir, "test.txt")
-	if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, os.WriteFile(testFile, []byte("test content"), 0644), "Failed to write test file")
 
 	driver, err := NewFSDriver(tempDir,
 		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return tempDir, false, nil // read-write
 		}),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to create FS driver")
 
 	ctx, err := driver.Authenticate("user", "pass", "", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to authenticate")
 	defer ctx.Close()
 
 	// Valid time
@@ -363,9 +329,7 @@ func TestFSContext_SetTime(t *testing.T) {
 
 	// Verify
 	info, err := os.Stat(testFile)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to stat file")
 	if !info.ModTime().Equal(newTime) {
 		t.Errorf("Time mismatch: got %v, want %v", info.ModTime(), newTime)
 	}
@@ -385,23 +349,17 @@ func TestFSContext_Chmod(t *testing.T) {
 	}
 
 	testFile := filepath.Join(tempDir, "test.txt")
-	if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, os.WriteFile(testFile, []byte("test content"), 0644), "Failed to write test file")
 
 	driver, err := NewFSDriver(tempDir,
 		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return tempDir, false, nil // read-write
 		}),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to create FS driver")
 
 	ctx, err := driver.Authenticate("user", "pass", "", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to authenticate")
 	defer ctx.Close()
 
 	// Change to 0600
@@ -411,9 +369,7 @@ func TestFSContext_Chmod(t *testing.T) {
 
 	// Verify
 	info, err := os.Stat(testFile)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to stat file")
 	// Note: os.Stat might return more permission bits than we set, so mask.
 	if info.Mode().Perm() != 0600 {
 		t.Errorf("Mode mismatch: got %o, want %o", info.Mode().Perm(), 0600)
@@ -436,19 +392,13 @@ func TestFSContext_GetHash(t *testing.T) {
 	t.Parallel()
 	tempDir := t.TempDir()
 	testFile := filepath.Join(tempDir, "test.txt")
-	if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, os.WriteFile(testFile, []byte("test content"), 0644), "Failed to write test file")
 
 	driver, err := NewFSDriver(tempDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to create FS driver")
 
 	ctx, err := driver.Authenticate("anonymous", "", "", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to authenticate")
 	defer ctx.Close()
 
 	tests := []struct {

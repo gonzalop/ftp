@@ -7,6 +7,7 @@ import (
 )
 
 func TestDial_ExclusiveTLS(t *testing.T) {
+	t.Parallel()
 	// Test that Explicit + Implicit fails
 	_, err := Dial("ftp.example.com:21", WithExplicitTLS(nil), WithImplicitTLS(nil))
 	if err == nil {
@@ -25,6 +26,7 @@ func TestDial_ExclusiveTLS(t *testing.T) {
 }
 
 func TestDial_MultipleSameTLS(t *testing.T) {
+	t.Parallel()
 	// Test that multiple Explicit checks are fine (last one wins, no error)
 	// Note: Verify logic allows this? Yes, explicit doesn't check against explicit.
 	_, err := Dial("ftp.example.com:21", WithExplicitTLS(nil), WithExplicitTLS(nil))
@@ -41,6 +43,7 @@ func TestDial_MultipleSameTLS(t *testing.T) {
 }
 
 func TestWithIdleTimeout(t *testing.T) {
+	t.Parallel()
 	// Test that idle timeout is set correctly
 	// We can't fully test the functionality without a real server,
 	// but we can verify the option sets the field

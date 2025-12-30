@@ -11,6 +11,7 @@ import (
 )
 
 func TestPasvPortRange(t *testing.T) {
+	t.Parallel()
 	// 1. Setup temporary directory for server root
 	rootDir := t.TempDir()
 
@@ -27,20 +28,14 @@ func TestPasvPortRange(t *testing.T) {
 			PasvMaxPort: maxPort,
 		}),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to create FS driver")
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to listen")
 	addr := ln.Addr().String()
 
 	server, err := NewServer(addr, WithDriver(driver))
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to create server")
 
 	go func() {
 		if err := server.Serve(ln); err != nil && err != ErrServerClosed {
@@ -50,24 +45,18 @@ func TestPasvPortRange(t *testing.T) {
 
 	// 3. Connect with Client
 	c, err := ftp.Dial(addr, ftp.WithTimeout(5*time.Second))
-	if err != nil {
-		t.Fatalf("Failed to dial: %v", err)
-	}
+	fatalIfErr(t, err, "Failed to dial")
 	defer func() {
 		if err := c.Quit(); err != nil {
 			t.Logf("Quit failed: %v", err)
 		}
 	}()
 
-	if err := c.Login("anonymous", "anonymous"); err != nil {
-		t.Fatalf("Login failed: %v", err)
-	}
+	fatalIfErr(t, c.Login("anonymous", "anonymous"), "Failed to login")
 
 	// 4. Send PASV command
 	resp, err := c.Quote("PASV")
-	if err != nil {
-		t.Fatalf("PASV command failed: %v", err)
-	}
+	fatalIfErr(t, err, "PASV command failed")
 
 	if resp.Code != 227 {
 		t.Fatalf("Expected 227 Entering Passive Mode, got %d %s", resp.Code, resp.Message)
@@ -95,13 +84,9 @@ func TestPasvPortRange(t *testing.T) {
 	}
 
 	p1, err := strconv.Atoi(parts[4])
-	if err != nil {
-		t.Fatalf("Invalid p1: %v", err)
-	}
+	fatalIfErr(t, err, "Invalid p1")
 	p2, err := strconv.Atoi(parts[5])
-	if err != nil {
-		t.Fatalf("Invalid p2: %v", err)
-	}
+	fatalIfErr(t, err, "Invalid p2")
 
 	port := p1*256 + p2
 

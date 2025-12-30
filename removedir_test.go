@@ -10,6 +10,7 @@ import (
 )
 
 func TestRemoveDirRecursive(t *testing.T) {
+	t.Parallel()
 	addr, cleanup, rootDir := setupServer(t)
 	defer cleanup()
 
@@ -37,37 +38,14 @@ func TestRemoveDirRecursive(t *testing.T) {
 	//   subdir3/
 	//     file4.txt
 
-	if err := c.MakeDir("test_dir"); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := c.Store("test_dir/file1.txt", bytes.NewBufferString("content1")); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := c.MakeDir("test_dir/subdir1"); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := c.Store("test_dir/subdir1/file2.txt", bytes.NewBufferString("content2")); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := c.MakeDir("test_dir/subdir1/subdir2"); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := c.Store("test_dir/subdir1/subdir2/file3.txt", bytes.NewBufferString("content3")); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := c.MakeDir("test_dir/subdir3"); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := c.Store("test_dir/subdir3/file4.txt", bytes.NewBufferString("content4")); err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, c.MakeDir("test_dir"))
+	fatalIfErr(t, c.Store("test_dir/file1.txt", bytes.NewBufferString("content1")))
+	fatalIfErr(t, c.MakeDir("test_dir/subdir1"))
+	fatalIfErr(t, c.Store("test_dir/subdir1/file2.txt", bytes.NewBufferString("content2")))
+	fatalIfErr(t, c.MakeDir("test_dir/subdir1/subdir2"))
+	fatalIfErr(t, c.Store("test_dir/subdir1/subdir2/file3.txt", bytes.NewBufferString("content3")))
+	fatalIfErr(t, c.MakeDir("test_dir/subdir3"))
+	fatalIfErr(t, c.Store("test_dir/subdir3/file4.txt", bytes.NewBufferString("content4")))
 
 	// Verify the structure exists
 	entries, err := c.List("test_dir")
@@ -79,9 +57,7 @@ func TestRemoveDirRecursive(t *testing.T) {
 	}
 
 	// Remove the entire directory recursively
-	if err := c.RemoveDirRecursive("test_dir"); err != nil {
-		t.Fatalf("RemoveDirRecursive failed: %v", err)
-	}
+	fatalIfErr(t, c.RemoveDirRecursive("test_dir"))
 
 	// Verify the directory is gone
 	entries, err = c.List(".")
@@ -102,6 +78,7 @@ func TestRemoveDirRecursive(t *testing.T) {
 }
 
 func TestRemoveDirRecursive_EmptyDir(t *testing.T) {
+	t.Parallel()
 	addr, cleanup, _ := setupServer(t)
 	defer cleanup()
 
@@ -120,9 +97,7 @@ func TestRemoveDirRecursive_EmptyDir(t *testing.T) {
 	}
 
 	// Create an empty directory
-	if err := c.MakeDir("empty_dir"); err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, c.MakeDir("empty_dir"))
 
 	// Remove it recursively
 	if err := c.RemoveDirRecursive("empty_dir"); err != nil {
@@ -142,6 +117,7 @@ func TestRemoveDirRecursive_EmptyDir(t *testing.T) {
 }
 
 func TestRemoveDirRecursive_NonExistent(t *testing.T) {
+	t.Parallel()
 	addr, cleanup, _ := setupServer(t)
 	defer cleanup()
 
@@ -163,5 +139,12 @@ func TestRemoveDirRecursive_NonExistent(t *testing.T) {
 	err = c.RemoveDirRecursive("nonexistent_dir")
 	if err == nil {
 		t.Error("RemoveDirRecursive should fail on non-existent directory")
+	}
+}
+
+func fatalIfErr(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
 	}
 }

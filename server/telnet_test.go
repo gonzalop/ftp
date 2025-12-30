@@ -7,6 +7,7 @@ import (
 )
 
 func TestTelnetReader(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		input    []byte

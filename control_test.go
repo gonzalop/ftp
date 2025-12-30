@@ -7,6 +7,7 @@ import (
 )
 
 func TestReadResponse_SingleLine(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		input    string
@@ -60,6 +61,7 @@ func TestReadResponse_SingleLine(t *testing.T) {
 }
 
 func TestReadResponse_MultiLine(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		input    string
@@ -109,6 +111,7 @@ func TestReadResponse_MultiLine(t *testing.T) {
 }
 
 func TestParsePASV(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		input    string
@@ -164,6 +167,7 @@ func TestParsePASV(t *testing.T) {
 }
 
 func TestParseEPSV(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		input    string
@@ -207,6 +211,7 @@ func TestParseEPSV(t *testing.T) {
 }
 
 func TestResponse_CodeChecks(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		code  int
 		is2xx bool
@@ -240,6 +245,7 @@ func TestResponse_CodeChecks(t *testing.T) {
 }
 
 func TestProtocolError(t *testing.T) {
+	t.Parallel()
 	err := &ProtocolError{
 		Command:  "STOR file.txt",
 		Response: "Permission denied",
@@ -265,6 +271,7 @@ func TestProtocolError(t *testing.T) {
 }
 
 func TestReadResponse_RFC2389(t *testing.T) {
+	t.Parallel()
 	// Example from RFC 2389 - feature lines start with space
 	response := "211-Extensions supported:\r\n" +
 		" MLST size*;create;modify*;perm;media-type\r\n" +

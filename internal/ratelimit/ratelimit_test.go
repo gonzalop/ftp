@@ -8,6 +8,7 @@ import (
 )
 
 func TestNew(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		bytesPerSecond int64
@@ -34,6 +35,7 @@ func TestNew(t *testing.T) {
 }
 
 func TestNewReader(t *testing.T) {
+	t.Parallel()
 	data := []byte("test data")
 	reader := bytes.NewReader(data)
 
@@ -52,6 +54,7 @@ func TestNewReader(t *testing.T) {
 }
 
 func TestNewWriter(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 
 	// With nil limiter, should return original writer
@@ -69,6 +72,7 @@ func TestNewWriter(t *testing.T) {
 }
 
 func TestReader_Read(t *testing.T) {
+	t.Parallel()
 	// Create a 1KB test data
 	data := make([]byte, 1024)
 	for i := range data {
@@ -101,6 +105,7 @@ func TestReader_Read(t *testing.T) {
 }
 
 func TestWriter_Write(t *testing.T) {
+	t.Parallel()
 	// Create a 1KB test data
 	data := make([]byte, 1024)
 	for i := range data {
@@ -133,6 +138,7 @@ func TestWriter_Write(t *testing.T) {
 }
 
 func TestReader_LargeTransfer(t *testing.T) {
+	t.Parallel()
 	// Create 10KB test data
 	data := make([]byte, 10*1024)
 	for i := range data {
@@ -170,6 +176,7 @@ func TestReader_LargeTransfer(t *testing.T) {
 }
 
 func TestWriter_LargeTransfer(t *testing.T) {
+	t.Parallel()
 	// Create 10KB test data
 	data := make([]byte, 10*1024)
 	for i := range data {
@@ -208,6 +215,7 @@ func TestWriter_LargeTransfer(t *testing.T) {
 }
 
 func TestUnlimitedRate(t *testing.T) {
+	t.Parallel()
 	data := make([]byte, 10*1024)
 	for i := range data {
 		data[i] = byte(i % 256)

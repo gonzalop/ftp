@@ -23,36 +23,26 @@ func TestDirectoryMessage(t *testing.T) {
 
 	// Create a directory with a .message file
 	msgDir := filepath.Join(rootDir, "info")
-	if err := os.Mkdir(msgDir, 0755); err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, os.Mkdir(msgDir, 0755), "Failed to create info dir")
 	messageContent := "Welcome to the info directory.\nPlease behave."
-	if err := os.WriteFile(filepath.Join(msgDir, ".message"), []byte(messageContent), 0644); err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, os.WriteFile(filepath.Join(msgDir, ".message"), []byte(messageContent), 0644), "Failed to write .message")
 
 	driver, err := NewFSDriver(rootDir,
 		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil
 		}),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to create FS driver")
 
 	// Enable Directory Messages
 	server, err := NewServer(":0",
 		WithDriver(driver),
 		WithEnableDirMessage(true),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to create server")
 
 	ln, err := net.Listen("tcp", ":0")
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to listen")
 	addr := ln.Addr().String()
 
 	go func() {
@@ -68,21 +58,15 @@ func TestDirectoryMessage(t *testing.T) {
 
 	// 2. Connect
 	c, err := ftp.Dial(addr, ftp.WithTimeout(2*time.Second))
-	if err != nil {
-		t.Fatalf("Dial failed: %v", err)
-	}
+	fatalIfErr(t, err, "Dial failed")
 	defer func() { _ = c.Quit() }()
 
-	if err := c.Login("test", "test"); err != nil {
-		t.Fatalf("Login failed: %v", err)
-	}
+	fatalIfErr(t, c.Login("test", "test"), "Login failed")
 
 	// 3. Change Directory and check response
 	// We use Quote to get the raw response message
 	resp, err := c.Quote("CWD info")
-	if err != nil {
-		t.Fatalf("CWD failed: %v", err)
-	}
+	fatalIfErr(t, err, "CWD failed")
 
 	if resp.Code != 250 {
 		t.Errorf("Expected 250, got %d", resp.Code)
@@ -198,28 +182,20 @@ func TestASCIIMode(t *testing.T) {
 	// Create a text file with Unix line endings (LF)
 	contentLF := "line1\nline2\n"
 	filename := "unix.txt"
-	if err := os.WriteFile(filepath.Join(rootDir, filename), []byte(contentLF), 0644); err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, os.WriteFile(filepath.Join(rootDir, filename), []byte(contentLF), 0644), "Failed to write unix.txt")
 
 	driver, err := NewFSDriver(rootDir,
 		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil
 		}),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to create FS driver")
 
 	server, err := NewServer(":0", WithDriver(driver))
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to create server")
 
 	ln, err := net.Listen("tcp", ":0")
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to listen")
 	addr := ln.Addr().String()
 
 	go func() { _ = server.Serve(ln) }()
@@ -230,24 +206,16 @@ func TestASCIIMode(t *testing.T) {
 	}()
 
 	c, err := ftp.Dial(addr, ftp.WithTimeout(2*time.Second))
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Dial failed")
 	defer func() { _ = c.Quit() }()
 
-	if err := c.Login("test", "test"); err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, c.Login("test", "test"), "Login failed")
 
 	// 2. Test Download (RETR) in ASCII mode
-	if err := c.Type("A"); err != nil {
-		t.Fatalf("Type ASCII failed: %v", err)
-	}
+	fatalIfErr(t, c.Type("A"), "Type ASCII failed")
 
 	buf, err := manualRetrieve(t, c, filename)
-	if err != nil {
-		t.Fatalf("manualRetrieve failed: %v", err)
-	}
+	fatalIfErr(t, err, "manualRetrieve failed")
 
 	// Expect CRLF
 	expectedCRLF := "line1\r\nline2\r\n"
@@ -258,35 +226,25 @@ func TestASCIIMode(t *testing.T) {
 	// Reconnect to clear control channel state (unconsumed 226 response)
 	_ = c.Quit()
 	c, err = ftp.Dial(addr, ftp.WithTimeout(2*time.Second))
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Dial failed (reconnect)")
 	defer func() { _ = c.Quit() }()
 
-	if err := c.Login("test", "test"); err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, c.Login("test", "test"), "Login failed (reconnect)")
 
 	// 3. Test Upload (STOR) in ASCII mode
-	if err := c.Type("A"); err != nil {
-		t.Fatalf("Type ASCII failed: %v", err)
-	}
+	fatalIfErr(t, c.Type("A"), "Type ASCII failed")
 
 	// We send CRLF, expect LF on disk
 	uploadName := "upload.txt"
 	uploadContentCRLF := []byte("foo\r\nbar\r\n")
-	if err := manualStore(t, c, uploadName, uploadContentCRLF); err != nil {
-		t.Fatalf("manualStore failed: %v", err)
-	}
+	fatalIfErr(t, manualStore(t, c, uploadName, uploadContentCRLF), "manualStore failed")
 
 	// Wait a bit for server to process close
 	time.Sleep(100 * time.Millisecond)
 
 	// Verify on disk (should be LF)
 	diskContent, err := os.ReadFile(filepath.Join(rootDir, uploadName))
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to read uploaded file")
 
 	expectedLF := "foo\nbar\n"
 	if string(diskContent) != expectedLF {
@@ -321,9 +279,7 @@ func TestABOR(t *testing.T) {
 	}()
 
 	c, err := ftp.Dial(addr, ftp.WithTimeout(5*time.Second))
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Dial failed")
 	defer func() { _ = c.Quit() }()
 	_ = c.Login("test", "test")
 
@@ -338,16 +294,12 @@ func TestABOR(t *testing.T) {
 	dataAddr := fmt.Sprintf("127.0.0.1:%d", p1*256+p2)
 
 	dataConn, err := net.Dial("tcp", dataAddr)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Dial data port failed")
 	defer dataConn.Close()
 
 	// Send RETR
 	_, err = c.Quote("RETR " + largeFile)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "RETR failed")
 
 	// 3. Wait a tiny bit and send ABOR
 	time.Sleep(50 * time.Millisecond)
@@ -385,37 +337,22 @@ func TestServerMiscFeatures(t *testing.T) {
 	rootDir := t.TempDir()
 
 	// Create test file structure
-	err := os.WriteFile(filepath.Join(rootDir, "file1.txt"), []byte("content1"), 0644)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = os.Mkdir(filepath.Join(rootDir, "subdir"), 0755)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = os.WriteFile(filepath.Join(rootDir, "subdir", "file2.txt"), []byte("content2"), 0644)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, os.WriteFile(filepath.Join(rootDir, "file1.txt"), []byte("content1"), 0644), "Failed to write file1.txt")
+	fatalIfErr(t, os.Mkdir(filepath.Join(rootDir, "subdir"), 0755), "Failed to create subdir")
+	fatalIfErr(t, os.WriteFile(filepath.Join(rootDir, "subdir", "file2.txt"), []byte("content2"), 0644), "Failed to write file2.txt")
 
 	var logBuf bytes.Buffer
 	driver, err := NewFSDriver(rootDir, WithAnonWrite(true))
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to create FS driver")
 
 	s, err := NewServer(":0",
 		WithDriver(driver),
 		WithTransferLog(&logBuf),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to create server")
 
 	ln, err := net.Listen("tcp", ":0")
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to listen")
 	go func() {
 		if err := s.Serve(ln); err != ErrServerClosed {
 			t.Errorf("Serve() execution error: %v", err)
@@ -438,20 +375,14 @@ func TestServerMiscFeatures(t *testing.T) {
 
 func testAnonWriteAndTransferLog(t *testing.T, addr string, logBuf *bytes.Buffer) {
 	conn, err := rawLogin(addr, "anonymous", "test@example.com")
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "rawLogin failed")
 	defer conn.Close()
 
 	dataAddr, err := rawEnterPasv(conn)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "rawEnterPasv failed")
 
 	dataConn, err := net.DialTimeout("tcp", dataAddr, 5*time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Dial data port failed")
 	defer dataConn.Close()
 
 	fmt.Fprintf(conn, "STOR upload.txt\r\n")
@@ -459,14 +390,10 @@ func testAnonWriteAndTransferLog(t *testing.T, addr string, logBuf *bytes.Buffer
 	dataConn.Close()
 
 	code, _, err := rawReadResponse(conn)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "rawReadResponse failed")
 	if code == 150 {
 		code, _, err = rawReadResponse(conn)
-		if err != nil {
-			t.Fatal(err)
-		}
+		fatalIfErr(t, err, "rawReadResponse (226) failed")
 	}
 	if code != 226 {
 		t.Errorf("Expected 226 Transfer complete, got %d", code)
@@ -486,32 +413,22 @@ func testAnonWriteAndTransferLog(t *testing.T, addr string, logBuf *bytes.Buffer
 
 func testRecursiveList(t *testing.T, addr string) {
 	conn, err := rawLogin(addr, "anonymous", "test@example.com")
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "rawLogin failed")
 	defer conn.Close()
 
 	dataAddr, err := rawEnterPasv(conn)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "rawEnterPasv failed")
 
 	dataConn, err := net.DialTimeout("tcp", dataAddr, 5*time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Dial data port failed")
 
 	fmt.Fprintf(conn, "LIST -R\r\n")
 
 	var buf bytes.Buffer
-	if err := dataConn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, dataConn.SetReadDeadline(time.Now().Add(5*time.Second)), "SetReadDeadline failed")
 	_, err = buf.ReadFrom(dataConn)
 	dataConn.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "ReadFrom failed")
 
 	_, _, _ = rawReadResponse(conn)
 	_, _, _ = rawReadResponse(conn)
@@ -533,19 +450,13 @@ func testUmask(t *testing.T) {
 	driverUmask, err := NewFSDriver(rootDirUmask, WithAnonWrite(true), WithSettings(&Settings{
 		Umask: 0077,
 	}))
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to create FS driver")
 
 	var logBuf bytes.Buffer
 	sUmask, err := NewServer(":0", WithDriver(driverUmask), WithTransferLog(&logBuf))
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to create server")
 	lnUmask, err := net.Listen("tcp", ":0")
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to listen")
 	go func() {
 		_ = sUmask.Serve(lnUmask)
 	}()
@@ -558,20 +469,14 @@ func testUmask(t *testing.T) {
 	addrUmask := lnUmask.Addr().String()
 
 	conn, err := rawLogin(addrUmask, "anonymous", "test@example.com")
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "rawLogin failed")
 	defer conn.Close()
 
 	dataAddr, err := rawEnterPasv(conn)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "rawEnterPasv failed")
 
 	dataConn, err := net.DialTimeout("tcp", dataAddr, 5*time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Dial data port failed")
 	defer dataConn.Close()
 
 	fmt.Fprintf(conn, "STOR private.txt\r\n")
@@ -582,9 +487,7 @@ func testUmask(t *testing.T) {
 	_, _, _ = rawReadResponse(conn)
 
 	info, err := os.Stat(filepath.Join(rootDirUmask, "private.txt"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Stat failed")
 	perm := info.Mode().Perm()
 	if perm != 0600 {
 		t.Errorf("Expected 0600 permission with umask 077, got %v", perm)

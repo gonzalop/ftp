@@ -13,6 +13,7 @@ import (
 )
 
 func TestSecurity_SymlinkTraversal(t *testing.T) {
+	t.Parallel()
 	// 1. Setup directories
 	// /tmp/root - FTP root
 	// /tmp/outside - Outside root (forbidden)
@@ -20,24 +21,16 @@ func TestSecurity_SymlinkTraversal(t *testing.T) {
 	rootDir := filepath.Join(tmpDir, "root")
 	outsideDir := filepath.Join(tmpDir, "outside")
 
-	if err := os.Mkdir(rootDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Mkdir(outsideDir, 0755); err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, os.Mkdir(rootDir, 0755), "Failed to create root dir")
+	fatalIfErr(t, os.Mkdir(outsideDir, 0755), "Failed to create outside dir")
 
 	// Create a target file outside root
 	targetFile := filepath.Join(outsideDir, "target.txt")
-	if err := os.WriteFile(targetFile, []byte("secret"), 0644); err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, os.WriteFile(targetFile, []byte("secret"), 0644), "Failed to write target file")
 
 	// Create a symlink inside root pointing to outside
 	symlink := filepath.Join(rootDir, "badlink")
-	if err := os.Symlink(outsideDir, symlink); err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, os.Symlink(outsideDir, symlink), "Failed to create symlink")
 
 	// 2. Start Server
 	driver, err := NewFSDriver(rootDir,
@@ -45,20 +38,14 @@ func TestSecurity_SymlinkTraversal(t *testing.T) {
 			return rootDir, false, nil // allow write
 		}),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to create FS driver")
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to listen")
 	addr := ln.Addr().String()
 
 	server, err := NewServer(addr, WithDriver(driver))
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to create server")
 
 	go func() {
 		if err := server.Serve(ln); err != nil && err != ErrServerClosed {
@@ -75,18 +62,14 @@ func TestSecurity_SymlinkTraversal(t *testing.T) {
 
 	// 3. Connect Client
 	c, err := ftp.Dial(addr, ftp.WithTimeout(2*time.Second))
-	if err != nil {
-		t.Fatalf("Dial failed: %v", err)
-	}
+	fatalIfErr(t, err, "Dial failed")
 	defer func() {
 		if err := c.Quit(); err != nil {
 			t.Logf("Quit error: %v", err)
 		}
 	}()
 
-	if err := c.Login("user", "pass"); err != nil {
-		t.Fatalf("Login failed: %v", err)
-	}
+	fatalIfErr(t, c.Login("user", "pass"), "Login failed")
 
 	// 4. Attempt attacks via symlink
 
@@ -131,6 +114,7 @@ func TestSecurity_SymlinkTraversal(t *testing.T) {
 }
 
 func TestSecurity_ErrorSanitization(t *testing.T) {
+	t.Parallel()
 	// 1. Setup server
 	rootDir := t.TempDir()
 	// Create a real root path that is long/identifiable
@@ -141,20 +125,14 @@ func TestSecurity_ErrorSanitization(t *testing.T) {
 			return realRoot, false, nil
 		}),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to create FS driver")
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to listen")
 	addr := ln.Addr().String()
 
 	server, err := NewServer(addr, WithDriver(driver))
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to create server")
 
 	go func() {
 		_ = server.Serve(ln)
@@ -167,25 +145,19 @@ func TestSecurity_ErrorSanitization(t *testing.T) {
 
 	// 2. Connect
 	c, err := ftp.Dial(addr, ftp.WithTimeout(2*time.Second))
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Dial failed")
 	defer func() {
 		_ = c.Quit()
 	}()
 
-	if err := c.Login("user", "pass"); err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, c.Login("user", "pass"), "Login failed")
 
 	// 3. Trigger errors and check for path disclosure
 
 	// Case 1: Rename with invalid characters or racy condition
 	// (Note: we want to trigger the generic error path in driver_fs.go)
 	// We'll try to rename something that definitely exists to an invalid path
-	if err := os.WriteFile(filepath.Join(realRoot, "exist.txt"), []byte("test"), 0644); err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, os.WriteFile(filepath.Join(realRoot, "exist.txt"), []byte("test"), 0644), "Failed to write exist.txt")
 
 	// Try to rename through a non-existent directory component
 	// This might trigger "failed to resolve destination path" or similar

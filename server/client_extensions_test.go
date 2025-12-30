@@ -11,6 +11,7 @@ import (
 )
 
 func TestClientExtensions(t *testing.T) {
+	t.Parallel()
 	rootDir := t.TempDir()
 	driver, err := NewFSDriver(rootDir,
 		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {

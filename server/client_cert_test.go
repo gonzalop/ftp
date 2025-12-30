@@ -97,6 +97,7 @@ func generateCert(t *testing.T, isCA bool, caCert *x509.Certificate, caKey *rsa.
 }
 
 func TestClientCertificateAuthentication(t *testing.T) {
+	t.Parallel()
 	// 1. Generate PKI Infrastructure
 	_, _, caCert, caKey := generateCert(t, true, nil, nil)
 	serverCertPath, serverKeyPath, _, _ := generateCert(t, false, caCert, caKey)

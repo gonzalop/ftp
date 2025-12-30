@@ -20,29 +20,21 @@ func TestServerIntegration(t *testing.T) {
 
 	testContent := "Hello, FTP World!"
 	err := os.WriteFile(filepath.Join(rootDir, "test.txt"), []byte(testContent), 0644)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to write test file")
 
 	driver, err := NewFSDriver(rootDir,
 		WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil
 		}),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to create FS driver")
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to listen")
 	addr := ln.Addr().String()
 
 	server, err := NewServer(addr, WithDriver(driver))
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to create server")
 
 	go func() {
 		if err := server.Serve(ln); err != nil && err != ErrServerClosed {
@@ -51,18 +43,14 @@ func TestServerIntegration(t *testing.T) {
 	}()
 
 	c, err := ftp.Dial(addr, ftp.WithTimeout(5*time.Second))
-	if err != nil {
-		t.Fatalf("Failed to dial: %v", err)
-	}
+	fatalIfErr(t, err, "Failed to dial")
 	defer func() {
 		if err := c.Quit(); err != nil {
 			t.Logf("Quit failed: %v", err)
 		}
 	}()
 
-	if err := c.Login("anonymous", "anonymous"); err != nil {
-		t.Fatalf("Login failed: %v", err)
-	}
+	fatalIfErr(t, c.Login("anonymous", "anonymous"), "Login failed")
 
 	testPWD(t, c)
 	testLIST(t, c, testContent)
@@ -73,9 +61,7 @@ func TestServerIntegration(t *testing.T) {
 
 func testPWD(t *testing.T, c *ftp.Client) {
 	pwd, err := c.CurrentDir()
-	if err != nil {
-		t.Fatalf("CurrentDir failed: %v", err)
-	}
+	fatalIfErr(t, err, "CurrentDir failed")
 	if pwd != "/" {
 		t.Errorf("Expected /, got %s", pwd)
 	}
@@ -83,9 +69,7 @@ func testPWD(t *testing.T, c *ftp.Client) {
 
 func testLIST(t *testing.T, c *ftp.Client, testContent string) {
 	entries, err := c.List(".")
-	if err != nil {
-		t.Fatalf("List failed: %v", err)
-	}
+	fatalIfErr(t, err, "List failed")
 	found := false
 	for _, entry := range entries {
 		if entry.Name == "test.txt" {
@@ -104,9 +88,7 @@ func testLIST(t *testing.T, c *ftp.Client, testContent string) {
 func testRETR(t *testing.T, c *ftp.Client, testContent string) {
 	var buf bytes.Buffer
 	err := c.Retrieve("test.txt", &buf)
-	if err != nil {
-		t.Fatalf("Retrieve failed: %v", err)
-	}
+	fatalIfErr(t, err, "Retrieve failed")
 	if buf.String() != testContent {
 		t.Errorf("Content mismatch: got %q, want %q", buf.String(), testContent)
 	}
@@ -115,14 +97,10 @@ func testRETR(t *testing.T, c *ftp.Client, testContent string) {
 func testSTOR(t *testing.T, c *ftp.Client, rootDir string) {
 	uploadContent := "Upload success"
 	uploadBuf := bytes.NewBufferString(uploadContent)
-	if err := c.Store("upload.txt", uploadBuf); err != nil {
-		t.Fatalf("Store failed: %v", err)
-	}
+	fatalIfErr(t, c.Store("upload.txt", uploadBuf), "Store failed")
 
 	diskContent, err := os.ReadFile(filepath.Join(rootDir, "upload.txt"))
-	if err != nil {
-		t.Fatalf("Could not read uploaded file: %v", err)
-	}
+	fatalIfErr(t, err, "Could not read uploaded file")
 	if string(diskContent) != uploadContent {
 		t.Errorf("Uploaded content mismatch: got %q, want %q", string(diskContent), uploadContent)
 	}
@@ -132,17 +110,13 @@ func testSTOU(t *testing.T, c *ftp.Client, rootDir string) {
 	uniqueContent := "Unique upload"
 	uniqueBuf := bytes.NewBufferString(uniqueContent)
 	uniqueName, err := c.StoreUnique(uniqueBuf)
-	if err != nil {
-		t.Fatalf("StoreUnique failed: %v", err)
-	}
+	fatalIfErr(t, err, "StoreUnique failed")
 	if uniqueName == "" {
 		t.Error("StoreUnique returned empty filename")
 	} else {
 		t.Logf("StoreUnique generated: %s", uniqueName)
 		diskUniqueContent, err := os.ReadFile(filepath.Join(rootDir, uniqueName))
-		if err != nil {
-			t.Fatalf("Could not read unique file %s: %v", uniqueName, err)
-		}
+		fatalIfErr(t, err, "Could not read unique file %s", uniqueName)
 		if string(diskUniqueContent) != uniqueContent {
 			t.Errorf("Unique content mismatch: got %q, want %q", string(diskUniqueContent), uniqueContent)
 		}
@@ -153,9 +127,7 @@ func TestServer_ActiveMode(t *testing.T) {
 	t.Parallel()
 	rootDir := t.TempDir()
 	err := os.WriteFile(filepath.Join(rootDir, "active.txt"), []byte("active mode content"), 0644)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to write active.txt")
 
 	driver, _ := NewFSDriver(rootDir, WithAuthenticator(func(u, p, h string, _ net.IP) (string, bool, error) {
 		return rootDir, false, nil
@@ -175,23 +147,17 @@ func TestServer_ActiveMode(t *testing.T) {
 	}()
 
 	c, err := ftp.Dial(ln.Addr().String(), ftp.WithActiveMode())
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to dial")
 	defer func() {
 		if err := c.Quit(); err != nil {
 			t.Logf("Quit failed: %v", err)
 		}
 	}()
 
-	if err := c.Login("test", "test"); err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, c.Login("test", "test"), "Login failed")
 
 	var buf bytes.Buffer
-	if err := c.Retrieve("active.txt", &buf); err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, c.Retrieve("active.txt", &buf), "Retrieve failed")
 
 	if buf.String() != "active mode content" {
 		t.Errorf("Content mismatch: %s", buf.String())
@@ -203,9 +169,7 @@ func TestServer_Restart(t *testing.T) {
 	rootDir := t.TempDir()
 	content := "0123456789"
 	err := os.WriteFile(filepath.Join(rootDir, "resume.txt"), []byte(content), 0644)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to write resume.txt")
 
 	driver, _ := NewFSDriver(rootDir, WithAuthenticator(func(u, p, h string, _ net.IP) (string, bool, error) {
 		return rootDir, false, nil
@@ -225,24 +189,18 @@ func TestServer_Restart(t *testing.T) {
 	}()
 
 	c, err := ftp.Dial(ln.Addr().String())
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, err, "Failed to dial")
 	defer func() {
 		if err := c.Quit(); err != nil {
 			t.Logf("Quit failed: %v", err)
 		}
 	}()
 
-	if err := c.Login("test", "test"); err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, c.Login("test", "test"), "Login failed")
 
 	var buf bytes.Buffer
 	// Use RetrieveFrom which handles RestartAt internally
-	if err := c.RetrieveFrom("resume.txt", &buf, 5); err != nil {
-		t.Fatal(err)
-	}
+	fatalIfErr(t, c.RetrieveFrom("resume.txt", &buf, 5), "RetrieveFrom failed")
 
 	if buf.String() != "56789" {
 		t.Errorf("Expected 56789, got %s", buf.String())
@@ -250,6 +208,7 @@ func TestServer_Restart(t *testing.T) {
 }
 
 func TestListenAndServe(t *testing.T) {
+	t.Parallel()
 	// Use a random port
 	addr := "127.0.0.1:0"
 	rootDir := t.TempDir()

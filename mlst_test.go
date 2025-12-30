@@ -7,6 +7,7 @@ import (
 )
 
 func TestParseMLEntry(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		input     string
@@ -68,6 +69,7 @@ func TestParseMLEntry(t *testing.T) {
 }
 
 func TestParseMLEntry_ModTime(t *testing.T) {
+	t.Parallel()
 	input := "type=file;modify=20231220143000; test.txt"
 	entry, err := parseMLEntry(input)
 	if err != nil {
@@ -81,6 +83,7 @@ func TestParseMLEntry_ModTime(t *testing.T) {
 }
 
 func TestParseMLEntry_Facts(t *testing.T) {
+	t.Parallel()
 	input := "type=file;size=1234;perm=r;unix.mode=0644; test.txt"
 	entry, err := parseMLEntry(input)
 	if err != nil {
@@ -101,6 +104,7 @@ func TestParseMLEntry_Facts(t *testing.T) {
 }
 
 func TestParseFEATResponse(t *testing.T) {
+	t.Parallel()
 	// Simulate FEAT response parsing
 	response := `211-Features:
  MDTM

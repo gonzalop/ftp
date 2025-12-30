@@ -31,6 +31,7 @@ func (s *safeBuffer) String() string {
 }
 
 func TestHostCommand(t *testing.T) {
+	t.Parallel()
 	// 1. Setup server with a logger to capture output
 	var logBuf safeBuffer
 	logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))

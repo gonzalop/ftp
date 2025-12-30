@@ -5,6 +5,7 @@ import (
 )
 
 func TestParseListLine(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		line           string
@@ -242,6 +243,7 @@ func (p *CustomParser) Parse(line string) (*Entry, bool) {
 }
 
 func TestCustomParser(t *testing.T) {
+	t.Parallel()
 	custom := &CustomParser{}
 	// Pass custom parser
 	entry := parseListLine("custom-entry", []ListingParser{custom})

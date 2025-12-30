@@ -10,6 +10,7 @@ import (
 
 // TestWithDriver tests the WithDriver option
 func TestWithDriver(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	driver, err := NewFSDriver(tempDir)
 	if err != nil {
@@ -37,6 +38,7 @@ func TestWithDriver(t *testing.T) {
 
 // TestWithTLS tests the WithTLS option
 func TestWithTLS(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	driver, _ := NewFSDriver(tempDir)
 
@@ -62,6 +64,7 @@ func TestWithTLS(t *testing.T) {
 
 // TestWithLogger tests the WithLogger option
 func TestWithLogger(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	driver, _ := NewFSDriver(tempDir)
 
@@ -84,6 +87,7 @@ func TestWithLogger(t *testing.T) {
 
 // TestWithMaxIdleTime tests the WithMaxIdleTime option
 func TestWithMaxIdleTime(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	driver, _ := NewFSDriver(tempDir)
 
@@ -104,6 +108,7 @@ func TestWithMaxIdleTime(t *testing.T) {
 
 // TestWithMaxConnections tests the WithMaxConnections option
 func TestWithMaxConnections(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	driver, _ := NewFSDriver(tempDir)
 
@@ -143,6 +148,7 @@ func TestWithMaxConnections(t *testing.T) {
 
 // TestWithDisableMLSD tests the WithDisableMLSD option
 func TestWithDisableMLSD(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	driver, _ := NewFSDriver(tempDir)
 
@@ -161,6 +167,7 @@ func TestWithDisableMLSD(t *testing.T) {
 
 // TestNewServer_RequiresDriver tests that NewServer requires a driver
 func TestNewServer_RequiresDriver(t *testing.T) {
+	t.Parallel()
 	_, err := NewServer(":0")
 	if err == nil {
 		t.Error("Expected error when driver is not provided")
@@ -169,6 +176,7 @@ func TestNewServer_RequiresDriver(t *testing.T) {
 
 // TestNewServer_Defaults tests default values
 func TestNewServer_Defaults(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	driver, _ := NewFSDriver(tempDir)
 
@@ -209,6 +217,7 @@ func TestNewServer_Defaults(t *testing.T) {
 
 // TestWithWelcomeMessage tests the WithWelcomeMessage option
 func TestWithWelcomeMessage(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	driver, _ := NewFSDriver(tempDir)
 
@@ -229,6 +238,7 @@ func TestWithWelcomeMessage(t *testing.T) {
 
 // TestWithServerName tests the WithServerName option
 func TestWithServerName(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	driver, _ := NewFSDriver(tempDir)
 
@@ -249,6 +259,7 @@ func TestWithServerName(t *testing.T) {
 
 // TestWithReadTimeout tests the WithReadTimeout option
 func TestWithReadTimeout(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	driver, _ := NewFSDriver(tempDir)
 
@@ -269,6 +280,7 @@ func TestWithReadTimeout(t *testing.T) {
 
 // TestWithWriteTimeout tests the WithWriteTimeout option
 func TestWithWriteTimeout(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	driver, _ := NewFSDriver(tempDir)
 
