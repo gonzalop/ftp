@@ -39,9 +39,6 @@ func (c *Client) StoreUnique(r io.Reader) (string, error) {
 
 	// Apply bandwidth limiting if configured
 	limiter := ratelimit.New(c.bandwidthLimit)
-	if limiter != nil {
-		defer limiter.Stop()
-	}
 	limitedReader := ratelimit.NewReader(r, limiter)
 
 	// Copy data to the connection
@@ -87,9 +84,6 @@ func (c *Client) Store(remotePath string, r io.Reader) error {
 
 	// Apply bandwidth limiting if configured
 	limiter := ratelimit.New(c.bandwidthLimit)
-	if limiter != nil {
-		defer limiter.Stop()
-	}
 	limitedReader := ratelimit.NewReader(r, limiter)
 
 	// Copy data to the connection
@@ -147,13 +141,10 @@ func (c *Client) Retrieve(remotePath string, w io.Writer) error {
 
 	// Apply bandwidth limiting if configured
 	limiter := ratelimit.New(c.bandwidthLimit)
-	if limiter != nil {
-		defer limiter.Stop()
-	}
-	limitedWriter := ratelimit.NewWriter(w, limiter)
+	limitedReader := ratelimit.NewReader(dataConn, limiter)
 
 	// Copy data from the connection
-	_, copyErr := io.Copy(limitedWriter, dataConn)
+	_, copyErr := io.Copy(w, limitedReader)
 
 	// Always finish the data connection (close and read response)
 	finishErr := c.finishDataConn(dataConn)
@@ -198,9 +189,6 @@ func (c *Client) Append(remotePath string, r io.Reader) error {
 
 	// Apply bandwidth limiting if configured
 	limiter := ratelimit.New(c.bandwidthLimit)
-	if limiter != nil {
-		defer limiter.Stop()
-	}
 	limitedReader := ratelimit.NewReader(r, limiter)
 
 	// Copy data to the connection
@@ -285,13 +273,10 @@ func (c *Client) RetrieveFrom(remotePath string, w io.Writer, offset int64) erro
 
 	// Apply bandwidth limiting if configured
 	limiter := ratelimit.New(c.bandwidthLimit)
-	if limiter != nil {
-		defer limiter.Stop()
-	}
-	limitedWriter := ratelimit.NewWriter(w, limiter)
+	limitedReader := ratelimit.NewReader(dataConn, limiter)
 
 	// Copy data from the connection
-	_, copyErr := io.Copy(limitedWriter, dataConn)
+	_, copyErr := io.Copy(w, limitedReader)
 
 	// Always finish the data connection (close and read response)
 	finishErr := c.finishDataConn(dataConn)
@@ -337,9 +322,6 @@ func (c *Client) StoreAt(remotePath string, r io.Reader, offset int64) error {
 
 	// Apply bandwidth limiting if configured
 	limiter := ratelimit.New(c.bandwidthLimit)
-	if limiter != nil {
-		defer limiter.Stop()
-	}
 	limitedReader := ratelimit.NewReader(r, limiter)
 
 	// Copy data to the connection

@@ -30,26 +30,10 @@ func TestNew(t *testing.T) {
 				t.Errorf("Expected non-nil limiter for rate %d, got nil", tt.bytesPerSecond)
 			}
 			if limiter != nil {
-				limiter.Stop()
+				// No cleanup needed
 			}
 		})
 	}
-}
-
-func TestLimiter_Stop(t *testing.T) {
-	limiter := New(1024)
-	if limiter == nil {
-		t.Fatal("Expected non-nil limiter")
-	}
-
-	// Stop should be idempotent
-	limiter.Stop()
-	limiter.Stop()
-	limiter.Stop()
-
-	// Calling Stop on nil should not panic
-	var nilLimiter *Limiter
-	nilLimiter.Stop()
 }
 
 func TestNewReader(t *testing.T) {
@@ -64,7 +48,6 @@ func TestNewReader(t *testing.T) {
 
 	// With valid limiter, should return wrapped reader
 	limiter := New(1024)
-	defer limiter.Stop()
 	limited = NewReader(reader, limiter)
 	if limited == reader {
 		t.Error("Expected wrapped reader when limiter is non-nil")
@@ -82,7 +65,6 @@ func TestNewWriter(t *testing.T) {
 
 	// With valid limiter, should return wrapped writer
 	limiter := New(1024)
-	defer limiter.Stop()
 	limited = NewWriter(&buf, limiter)
 	if limited == &buf {
 		t.Error("Expected wrapped writer when limiter is non-nil")
@@ -98,7 +80,6 @@ func TestReader_Read(t *testing.T) {
 
 	// Test with 10KB/s limit (should take ~100ms for 1KB)
 	limiter := New(10 * 1024)
-	defer limiter.Stop()
 
 	reader := NewReader(bytes.NewReader(data), limiter)
 
@@ -117,10 +98,9 @@ func TestReader_Read(t *testing.T) {
 		t.Error("Data mismatch after rate-limited read")
 	}
 
-	// Should take at least 50ms (allowing some margin for timing variance)
-	if duration < 50*time.Millisecond {
-		t.Errorf("Read completed too quickly (%v), rate limiting may not be working", duration)
-	}
+	// With token bucket burst (10KB), 1KB transfers instantly
+	// Just verify it doesn't error and data is correct
+	_ = duration // Burst allows instant transfer
 }
 
 func TestWriter_Write(t *testing.T) {
@@ -132,7 +112,6 @@ func TestWriter_Write(t *testing.T) {
 
 	// Test with 10KB/s limit (should take ~100ms for 1KB)
 	limiter := New(10 * 1024)
-	defer limiter.Stop()
 
 	var buf bytes.Buffer
 	writer := NewWriter(&buf, limiter)
@@ -151,10 +130,9 @@ func TestWriter_Write(t *testing.T) {
 		t.Error("Data mismatch after rate-limited write")
 	}
 
-	// Should take at least 50ms (allowing some margin for timing variance)
-	if duration < 50*time.Millisecond {
-		t.Errorf("Write completed too quickly (%v), rate limiting may not be working", duration)
-	}
+	// With token bucket burst (10KB), 1KB transfers instantly
+	// Just verify it doesn't error and data is correct
+	_ = duration // Burst allows instant transfer
 }
 
 func TestReader_LargeTransfer(t *testing.T) {
@@ -166,7 +144,6 @@ func TestReader_LargeTransfer(t *testing.T) {
 
 	// Test with 5KB/s limit (should take ~2 seconds for 10KB)
 	limiter := New(5 * 1024)
-	defer limiter.Stop()
 
 	reader := NewReader(bytes.NewReader(data), limiter)
 
@@ -184,8 +161,9 @@ func TestReader_LargeTransfer(t *testing.T) {
 		t.Error("Data mismatch after rate-limited read")
 	}
 
-	// Should take at least 1.5 seconds (allowing margin)
-	if duration < 1500*time.Millisecond {
+	// With token bucket burst (5KB), first 5KB transfers instantly,
+	// then remaining 5KB takes 1 second at 5KB/s = ~1 second total
+	if duration < 800*time.Millisecond {
 		t.Errorf("Large read completed too quickly (%v), rate limiting may not be working", duration)
 	}
 	// But shouldn't take more than 3 seconds (with reasonable overhead)
@@ -203,7 +181,6 @@ func TestWriter_LargeTransfer(t *testing.T) {
 
 	// Test with 5KB/s limit (should take ~2 seconds for 10KB)
 	limiter := New(5 * 1024)
-	defer limiter.Stop()
 
 	var buf bytes.Buffer
 	writer := NewWriter(&buf, limiter)
@@ -222,8 +199,9 @@ func TestWriter_LargeTransfer(t *testing.T) {
 		t.Error("Data mismatch after rate-limited write")
 	}
 
-	// Should take at least 1.5 seconds (allowing margin)
-	if duration < 1500*time.Millisecond {
+	// With token bucket burst (5KB), first 5KB transfers instantly,
+	// then remaining 5KB takes 1 second at 5KB/s = ~1 second total
+	if duration < 800*time.Millisecond {
 		t.Errorf("Large write completed too quickly (%v), rate limiting may not be working", duration)
 	}
 	// But shouldn't take more than 3 seconds (with reasonable overhead)
@@ -261,7 +239,6 @@ func TestUnlimitedRate(t *testing.T) {
 func BenchmarkReader(b *testing.B) {
 	data := make([]byte, 1024)
 	limiter := New(1024 * 1024) // 1 MB/s
-	defer limiter.Stop()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -275,7 +252,6 @@ func BenchmarkReader(b *testing.B) {
 func BenchmarkWriter(b *testing.B) {
 	data := make([]byte, 1024)
 	limiter := New(1024 * 1024) // 1 MB/s
-	defer limiter.Stop()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

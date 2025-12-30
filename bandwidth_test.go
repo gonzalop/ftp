@@ -46,8 +46,10 @@ func TestClient_BandwidthLimit(t *testing.T) {
 	}
 	uploadDuration := time.Since(start)
 
-	// Should take at least 1.5 seconds for 10KB at 5KB/s (allowing margin)
-	if uploadDuration < 1500*time.Millisecond {
+	// With token bucket burst capacity, first 5KB transfers instantly,
+	// then remaining 5KB takes 1 second at 5KB/s = ~1 second total minimum
+	// Allow some margin for overhead
+	if uploadDuration < 800*time.Millisecond {
 		t.Errorf("Upload completed too quickly (%v), bandwidth limiting may not be working", uploadDuration)
 	}
 	// But shouldn't take more than 3 seconds (with reasonable overhead)
@@ -63,8 +65,10 @@ func TestClient_BandwidthLimit(t *testing.T) {
 	}
 	downloadDuration := time.Since(start)
 
-	// Should take at least 1.5 seconds for 10KB at 5KB/s (allowing margin)
-	if downloadDuration < 1500*time.Millisecond {
+	// With token bucket burst capacity, first 5KB transfers instantly,
+	// then remaining 5KB takes 1 second at 5KB/s = ~1 second total minimum
+	// Allow some margin for overhead
+	if downloadDuration < 800*time.Millisecond {
 		t.Errorf("Download completed too quickly (%v), bandwidth limiting may not be working", downloadDuration)
 	}
 	// But shouldn't take more than 3 seconds (with reasonable overhead)
@@ -148,7 +152,8 @@ func testServerBandwidthUpload(t *testing.T, c *ftp.Client, data []byte) {
 	}
 	uploadDuration := time.Since(start)
 
-	if uploadDuration < 1500*time.Millisecond {
+	// With token bucket burst capacity, allow for faster initial transfer
+	if uploadDuration < 800*time.Millisecond {
 		t.Errorf("Upload completed too quickly (%v), server bandwidth limiting may not be working", uploadDuration)
 	}
 	if uploadDuration > 3*time.Second {
@@ -164,7 +169,8 @@ func testServerBandwidthDownload(t *testing.T, c *ftp.Client, data []byte) {
 	}
 	downloadDuration := time.Since(start)
 
-	if downloadDuration < 1500*time.Millisecond {
+	// With token bucket burst capacity, allow for faster initial transfer
+	if downloadDuration < 800*time.Millisecond {
 		t.Errorf("Download completed too quickly (%v), server bandwidth limiting may not be working", downloadDuration)
 	}
 	if downloadDuration > 3*time.Second {
