@@ -27,7 +27,8 @@ A production-ready FTP client library for Go with comprehensive TLS support, pro
 - **Protocol Commands** - Support for `SYST` (System type), `ABOR` (Abort transfer)
 - **Automatic EPSV Fallback** - Automatically disables EPSV if server returns 502, falling back to PASV
 - **Virtual Hosting (HOST)** - Support for virtual hosting (RFC 7151)
-- **Recursive Operations** - Walk, UploadDir, DownloadDir helpers
+- **Recursive Operations** - Walk, UploadDir, DownloadDir, RemoveDirRecursive helpers
+- **Keep-Alive (NOOP)** - Manual and automatic keep-alive support
 
 ## RFC Compliance
 
@@ -325,6 +326,26 @@ Recursively download a remote directory to the local filesystem:
 // Download "/remote/logs" to "local_logs"
 err := client.DownloadDir("/remote/logs", "local_logs")
 ```
+
+#### Remove Directory Recursively
+
+Recursively delete a remote directory and all its contents:
+
+```go
+// Remove directory and all files/subdirectories
+err := client.RemoveDirRecursive("/old/project")
+```
+
+### Keep-Alive (NOOP)
+
+Send a NOOP command to keep the connection alive during long operations:
+
+```go
+// Manual keep-alive
+err := client.NoOp()
+```
+
+**Note:** If you use `WithIdleTimeout` when creating the client, automatic keep-alive is handled for you. The `NoOp()` method is for manual control when needed.
 
 ## API Reference
 
