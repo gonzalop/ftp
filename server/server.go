@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -138,6 +139,24 @@ func copyWithPooledBuffer(dst io.Writer, src io.Reader) (int64, error) {
 	pbuf := transferBufferPool.Get().(*[]byte)
 	defer transferBufferPool.Put(pbuf)
 	return io.CopyBuffer(dst, src, *pbuf)
+}
+
+var controlReaderPool = sync.Pool{
+	New: func() interface{} {
+		return bufio.NewReader(nil)
+	},
+}
+
+var telnetReaderPool = sync.Pool{
+	New: func() interface{} {
+		return newTelnetReader(nil)
+	},
+}
+
+var controlWriterPool = sync.Pool{
+	New: func() interface{} {
+		return bufio.NewWriter(nil)
+	},
 }
 
 // ErrServerClosed is returned by the Server's Serve, ServeTLS, ListenAndServe,

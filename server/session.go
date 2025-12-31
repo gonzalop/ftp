@@ -26,6 +26,7 @@ type session struct {
 	conn   net.Conn
 	reader *bufio.Reader
 	writer *bufio.Writer
+	tnet   *telnetReader
 	mu     sync.Mutex // Protects writer and state
 
 	// Session tracking
@@ -46,6 +47,7 @@ type session struct {
 	busy           bool
 	transferCtx    context.Context
 	transferCancel context.CancelFunc
+	transferWG     sync.WaitGroup
 
 	// Reader synchronization
 	cmdReqChan chan struct{}
@@ -209,11 +211,21 @@ func newSession(server *Server, conn net.Conn) *session {
 		remoteIP = remoteAddr // Fallback to full address
 	}
 
+	tr := telnetReaderPool.Get().(*telnetReader)
+	tr.Reset(conn)
+
+	reader := controlReaderPool.Get().(*bufio.Reader)
+	reader.Reset(tr)
+
+	writer := controlWriterPool.Get().(*bufio.Writer)
+	writer.Reset(conn)
+
 	s := &session{
 		server:       server,
 		conn:         conn,
-		reader:       bufio.NewReader(newTelnetReader(conn)),
-		writer:       bufio.NewWriter(conn),
+		reader:       reader,
+		writer:       writer,
+		tnet:         tr,
 		sessionID:    sessionID,
 		remoteIP:     remoteIP,
 		prot:         "C", // Default to clear
@@ -408,6 +420,12 @@ func (s *session) readCommand() (string, error) {
 
 // close closes the session and underlying connection.
 func (s *session) close() {
+	s.mu.Lock()
+	if s.transferCancel != nil {
+		s.transferCancel()
+	}
+	s.mu.Unlock()
+
 	if s.fs != nil {
 		s.fs.Close()
 	}
@@ -418,6 +436,27 @@ func (s *session) close() {
 		s.dataConn.Close()
 	}
 	s.conn.Close()
+
+	// Wait for all background transfers to finish before returning objects to the pool
+	s.transferWG.Wait()
+
+	// Return pooled objects
+	if s.reader != nil {
+		s.reader.Reset(nil)
+		controlReaderPool.Put(s.reader)
+		s.reader = nil
+	}
+	if s.writer != nil {
+		s.writer.Reset(nil)
+		controlWriterPool.Put(s.writer)
+		s.writer = nil
+	}
+	if s.tnet != nil {
+		s.tnet.Reset(nil)
+		telnetReaderPool.Put(s.tnet)
+		s.tnet = nil
+	}
+
 	s.server.logger.Debug("session closed",
 		"session_id", s.sessionID,
 		"remote_ip", s.redactIP(s.remoteIP),

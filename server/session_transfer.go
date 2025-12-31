@@ -78,8 +78,10 @@ func (s *session) handleRETR(path string) {
 	s.restartOffset = 0
 
 	ctx := s.startTransfer()
+	s.transferWG.Add(1)
 
 	go func() {
+		defer s.transferWG.Done()
 		defer s.endTransfer()
 		defer file.Close()
 		defer conn.Close()
@@ -201,8 +203,10 @@ func (s *session) handleSTOR(path string) {
 	s.restartOffset = 0
 
 	ctx := s.startTransfer()
+	s.transferWG.Add(1)
 
 	go func() {
+		defer s.transferWG.Done()
 		defer s.endTransfer()
 		defer file.Close()
 		defer conn.Close()
@@ -296,8 +300,10 @@ func (s *session) handleAPPE(path string) {
 	s.reply(150, "Opening data connection for APPE.")
 
 	ctx := s.startTransfer()
+	s.transferWG.Add(1)
 
 	go func() {
+		defer s.transferWG.Done()
 		defer s.endTransfer()
 		defer file.Close()
 		defer conn.Close()
@@ -361,8 +367,10 @@ func (s *session) handleSTOU(_ string) {
 	s.reply(150, fmt.Sprintf("FILE: %s", path))
 
 	ctx := s.startTransfer()
+	s.transferWG.Add(1)
 
 	go func() {
+		defer s.transferWG.Done()
 		defer s.endTransfer()
 		defer file.Close()
 		defer conn.Close()

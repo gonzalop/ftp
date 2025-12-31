@@ -31,6 +31,11 @@ func newTelnetReader(r io.Reader) *telnetReader {
 	}
 }
 
+// Reset resets the underlying reader.
+func (t *telnetReader) Reset(r io.Reader) {
+	t.reader.Reset(r)
+}
+
 // Read reads bytes from the underlying reader, filtering out Telnet commands.
 func (t *telnetReader) Read(p []byte) (n int, err error) {
 	if len(p) == 0 {
