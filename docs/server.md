@@ -264,6 +264,8 @@ srv, _ := server.NewServer(":21",
 
 See [ALTERNATIVE_TRANSPORTS.md](../ALTERNATIVE_TRANSPORTS.md) for details.
 
+**Working Example:** See [examples/quic/](../examples/quic/) for a complete, functional FTP-over-QUIC implementation.
+
 ### Command Control
 
 Disable specific FTP commands for security or transport compatibility:

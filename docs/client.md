@@ -368,6 +368,8 @@ client, _ := ftp.Dial("server:21", ftp.WithCustomDialer(&QuicDialer{quicConn: co
 
 The custom dialer is used for passive mode data connections. See [ALTERNATIVE_TRANSPORTS.md](../ALTERNATIVE_TRANSPORTS.md) for details.
 
+**Working Example:** See [examples/quic/](../examples/quic/) for a complete, functional FTP-over-QUIC implementation.
+
 ## API Reference
 
 For complete API documentation, see [![Go Reference](https://pkg.go.dev/badge/github.com/gonzalop/ftp.svg)](https://pkg.go.dev/github.com/gonzalop/ftp)

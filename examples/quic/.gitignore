@@ -1,0 +1,6 @@
+# Ignore QUIC example binaries
+client/client
+server/server
+
+# Ignore go.sum (will be generated)
+go.sum

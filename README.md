@@ -86,7 +86,7 @@ func main() {
 - **Modern Extensions** - MLST/MLSD, SIZE, MDTM, HASH support
 - **IPv6 Support** - Full IPv6 via EPSV/EPRT (RFC 2428)
 - **Rich Errors** - Detailed protocol error context
-- **Transport-Agnostic** - Pluggable dialer interface for alternative transports (QUIC, Unix sockets, etc.)
+- **Transport-Agnostic** - Pluggable dialer interface for alternative transports (QUIC, Unix sockets, etc.). See [examples/quic](examples/quic/) for a working implementation.
 
 **[→ Full feature list and API reference](docs/client.md)**
 
@@ -102,7 +102,7 @@ func main() {
 - **IP-Based Access Control** - Authenticate with client IP for security policies
 - **Secure by Default** - Built-in path validation and chroot support
 - **Extensible** - Custom authentication and driver interfaces
-- **Transport-Agnostic** - Pluggable listener factory for alternative transports (QUIC, Unix sockets, etc.)
+- **Transport-Agnostic** - Pluggable listener factory for alternative transports (QUIC, Unix sockets, etc.). See [examples/quic](examples/quic/) for a working implementation.
 - **Command Control** - Disable specific commands (i.e.,for security or transport compatibility)
 
 **[→ Full server documentation](docs/server.md)**
