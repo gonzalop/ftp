@@ -1,6 +1,6 @@
 module github.com/gonzalop/ftp/examples/quic
 
-go 1.24
+go 1.24.0
 
 // Use local FTP library
 replace github.com/gonzalop/ftp => ../..
@@ -11,7 +11,7 @@ require (
 )
 
 require (
-	golang.org/x/crypto v0.41.0 // indirect
-	golang.org/x/net v0.43.0 // indirect
-	golang.org/x/sys v0.35.0 // indirect
+	golang.org/x/crypto v0.45.0 // indirect
+	golang.org/x/net v0.47.0 // indirect
+	golang.org/x/sys v0.38.0 // indirect
 )
