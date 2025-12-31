@@ -125,6 +125,21 @@ type Server struct {
 	globalLimiter         *ratelimit.Limiter // shared across all users
 }
 
+// transferBufferPool is a pool of byte slices used for data transfers to reduce allocations.
+var transferBufferPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, 32*1024)
+		return &buf
+	},
+}
+
+// copyWithPooledBuffer copies from src to dst using a buffer from the pool.
+func copyWithPooledBuffer(dst io.Writer, src io.Reader) (int64, error) {
+	pbuf := transferBufferPool.Get().(*[]byte)
+	defer transferBufferPool.Put(pbuf)
+	return io.CopyBuffer(dst, src, *pbuf)
+}
+
 // ErrServerClosed is returned by the Server's Serve, ServeTLS, ListenAndServe,
 // and ListenAndServeTLS methods after a call to Shutdown or Close.
 var ErrServerClosed = errors.New("ftp: Server closed")

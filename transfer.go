@@ -42,7 +42,7 @@ func (c *Client) StoreUnique(r io.Reader) (string, error) {
 	limitedReader := ratelimit.NewReader(r, limiter)
 
 	// Copy data to the connection
-	_, copyErr := io.Copy(dataConn, limitedReader)
+	_, copyErr := copyWithPooledBuffer(dataConn, limitedReader)
 
 	// Always finish the data connection (close and read response)
 	finishErr := c.finishDataConn(dataConn)
@@ -87,7 +87,7 @@ func (c *Client) Store(remotePath string, r io.Reader) error {
 	limitedReader := ratelimit.NewReader(r, limiter)
 
 	// Copy data to the connection
-	_, copyErr := io.Copy(dataConn, limitedReader)
+	_, copyErr := copyWithPooledBuffer(dataConn, limitedReader)
 
 	// Always finish the data connection (close and read response)
 	finishErr := c.finishDataConn(dataConn)
@@ -144,7 +144,7 @@ func (c *Client) Retrieve(remotePath string, w io.Writer) error {
 	limitedReader := ratelimit.NewReader(dataConn, limiter)
 
 	// Copy data from the connection
-	_, copyErr := io.Copy(w, limitedReader)
+	_, copyErr := copyWithPooledBuffer(w, limitedReader)
 
 	// Always finish the data connection (close and read response)
 	finishErr := c.finishDataConn(dataConn)
@@ -192,7 +192,7 @@ func (c *Client) Append(remotePath string, r io.Reader) error {
 	limitedReader := ratelimit.NewReader(r, limiter)
 
 	// Copy data to the connection
-	_, copyErr := io.Copy(dataConn, limitedReader)
+	_, copyErr := copyWithPooledBuffer(dataConn, limitedReader)
 
 	// Always finish the data connection (close and read response)
 	finishErr := c.finishDataConn(dataConn)
@@ -276,7 +276,7 @@ func (c *Client) RetrieveFrom(remotePath string, w io.Writer, offset int64) erro
 	limitedReader := ratelimit.NewReader(dataConn, limiter)
 
 	// Copy data from the connection
-	_, copyErr := io.Copy(w, limitedReader)
+	_, copyErr := copyWithPooledBuffer(w, limitedReader)
 
 	// Always finish the data connection (close and read response)
 	finishErr := c.finishDataConn(dataConn)
@@ -325,7 +325,7 @@ func (c *Client) StoreAt(remotePath string, r io.Reader, offset int64) error {
 	limitedReader := ratelimit.NewReader(r, limiter)
 
 	// Copy data to the connection
-	_, copyErr := io.Copy(dataConn, limitedReader)
+	_, copyErr := copyWithPooledBuffer(dataConn, limitedReader)
 
 	// Always finish the data connection (close and read response)
 	finishErr := c.finishDataConn(dataConn)

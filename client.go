@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/url"
@@ -73,6 +74,21 @@ type Client struct {
 
 	// bandwidthLimit is the maximum transfer speed in bytes per second (0 = unlimited)
 	bandwidthLimit int64
+}
+
+// transferBufferPool is a pool of byte slices used for data transfers to reduce allocations.
+var transferBufferPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, 32*1024)
+		return &buf
+	},
+}
+
+// copyWithPooledBuffer copies from src to dst using a buffer from the pool.
+func copyWithPooledBuffer(dst io.Writer, src io.Reader) (int64, error) {
+	pbuf := transferBufferPool.Get().(*[]byte)
+	defer transferBufferPool.Put(pbuf)
+	return io.CopyBuffer(dst, src, *pbuf)
 }
 
 // Dial connects to an FTP server at the given address.

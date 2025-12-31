@@ -94,7 +94,8 @@ func (s *session) handleRETR(path string) {
 
 		// Apply bandwidth limiting to the connection (we're writing to it)
 		dst := s.rateLimitWriter(conn)
-		bytesTransferred, err := io.Copy(dst, src)
+
+		bytesTransferred, err := copyWithPooledBuffer(dst, src)
 
 		// Check for cancellation
 		select {
@@ -216,7 +217,7 @@ func (s *session) handleSTOR(path string) {
 		// Apply bandwidth limiting
 		src = s.rateLimitReader(src)
 
-		bytesTransferred, err := io.Copy(file, src)
+		bytesTransferred, err := copyWithPooledBuffer(file, src)
 
 		select {
 		case <-ctx.Done():
@@ -309,7 +310,7 @@ func (s *session) handleAPPE(path string) {
 		// Apply bandwidth limiting
 		src = s.rateLimitReader(src)
 
-		bytesTransferred, err := io.Copy(file, src)
+		bytesTransferred, err := copyWithPooledBuffer(file, src)
 		if err != nil {
 			select {
 			case <-ctx.Done():
@@ -374,7 +375,7 @@ func (s *session) handleSTOU(_ string) {
 		// Apply bandwidth limiting
 		src = s.rateLimitReader(src)
 
-		bytesTransferred, err := io.Copy(file, src)
+		bytesTransferred, err := copyWithPooledBuffer(file, src)
 		if err != nil {
 			select {
 			case <-ctx.Done():
