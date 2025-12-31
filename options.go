@@ -114,6 +114,31 @@ func WithDialer(dialer *net.Dialer) Option {
 	}
 }
 
+// WithCustomDialer sets a custom dialer for data connections.
+// This enables alternative transports like QUIC or Unix sockets.
+//
+// The dialer is used for passive mode data connections. Active mode
+// is not supported with custom dialers.
+//
+// Example with QUIC:
+//
+//	type QuicDialer struct {
+//	    quicConn quic.Connection
+//	}
+//
+//	func (d *QuicDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+//	    stream, _ := d.quicConn.OpenStreamSync(ctx)
+//	    return quicconn.NewQuicConn(stream, d.quicConn), nil
+//	}
+//
+//	client, _ := ftp.Dial("server:21", ftp.WithCustomDialer(&QuicDialer{quicConn: conn}))
+func WithCustomDialer(dialer Dialer) Option {
+	return func(c *Client) error {
+		c.customDialer = dialer
+		return nil
+	}
+}
+
 // tlsMode represents the TLS mode for the connection.
 type tlsMode int
 

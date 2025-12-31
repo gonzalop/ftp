@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
+	"strings"
 	"time"
 )
 
@@ -303,6 +305,83 @@ func WithBandwidthLimit(global, perUser int64) Option {
 	return func(s *Server) error {
 		s.bandwidthLimitGlobal = global
 		s.bandwidthLimitPerUser = perUser
+		return nil
+	}
+}
+
+// ListenerFactory creates listeners for passive mode data connections.
+// This allows custom transport implementations (e.g., QUIC).
+type ListenerFactory interface {
+	Listen(network, address string) (net.Listener, error)
+}
+
+// DefaultListenerFactory uses net.Listen for TCP connections.
+type DefaultListenerFactory struct{}
+
+func (d *DefaultListenerFactory) Listen(network, address string) (net.Listener, error) {
+	return net.Listen(network, address)
+}
+
+// WithListenerFactory sets a custom listener factory for passive mode data connections.
+// This enables alternative transports like QUIC.
+//
+// Example:
+//
+//	srv, _ := server.NewServer(":21",
+//	    server.WithDriver(driver),
+//	    server.WithListenerFactory(&QuicListenerFactory{...}),
+//	)
+func WithListenerFactory(factory ListenerFactory) Option {
+	return func(s *Server) error {
+		s.listenerFactory = factory
+		return nil
+	}
+}
+
+// WithDisableCommands disables specific FTP commands.
+// The server responds with "502 Command not implemented" for disabled commands.
+//
+// This is useful for:
+//   - Alternative transports that don't support certain features (e.g., disabling PORT/EPRT for QUIC)
+//   - Security hardening by disabling commands not deemed secure for your implementation
+//   - Creating read-only servers (disable STOR, DELE, RMD, etc.)
+//   - Restricting server capabilities for compliance or policy reasons
+//
+// Predefined command groups are available for convenience:
+//   - server.LegacyCommands - Deprecated X* command variants
+//   - server.ActiveModeCommands - PORT and EPRT
+//   - server.WriteCommands - All filesystem modification commands
+//   - server.SiteCommands - SITE administrative commands
+//
+// Example - Disable active mode for QUIC:
+//
+//	srv, _ := server.NewServer(":21",
+//	    server.WithDriver(driver),
+//	    server.WithListenerFactory(&QuicListenerFactory{...}),
+//	    server.WithDisableCommands(server.ActiveModeCommands...),
+//	)
+//
+// Example - Create a read-only server:
+//
+//	srv, _ := server.NewServer(":21",
+//	    server.WithDriver(driver),
+//	    server.WithDisableCommands(server.WriteCommands...),
+//	)
+//
+// Example - Disable legacy commands:
+//
+//	srv, _ := server.NewServer(":21",
+//	    server.WithDriver(driver),
+//	    server.WithDisableCommands(server.LegacyCommands...),
+//	)
+func WithDisableCommands(commands ...string) Option {
+	return func(s *Server) error {
+		if s.disabledCommands == nil {
+			s.disabledCommands = make(map[string]bool)
+		}
+		for _, cmd := range commands {
+			s.disabledCommands[strings.ToUpper(cmd)] = true
+		}
 		return nil
 	}
 }

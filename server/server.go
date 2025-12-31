@@ -124,6 +124,10 @@ type Server struct {
 	bandwidthLimitGlobal  int64              // bytes per second, 0 = unlimited
 	bandwidthLimitPerUser int64              // bytes per second, 0 = unlimited
 	globalLimiter         *ratelimit.Limiter // shared across all users
+
+	// Transport abstraction
+	listenerFactory  ListenerFactory // For passive mode data connections
+	disabledCommands map[string]bool // Commands to disable (e.g., PORT, EPRT)
 }
 
 // transferBufferPool is a pool of byte slices used for data transfers to reduce allocations.
@@ -202,13 +206,14 @@ var ErrServerClosed = errors.New("ftp: Server closed")
 //	)
 func NewServer(addr string, options ...Option) (*Server, error) {
 	s := &Server{
-		addr:           addr,
-		logger:         slog.Default(),
-		welcomeMessage: "220 FTP Server Ready",
-		serverName:     "UNIX Type: L8",
-		maxIdleTime:    5 * time.Minute,
-		conns:          make(map[net.Conn]struct{}),
-		connsByIP:      make(map[string]int32),
+		addr:            addr,
+		logger:          slog.Default(),
+		welcomeMessage:  "220 FTP Server Ready",
+		serverName:      "UNIX Type: L8",
+		maxIdleTime:     5 * time.Minute,
+		conns:           make(map[net.Conn]struct{}),
+		connsByIP:       make(map[string]int32),
+		listenerFactory: &DefaultListenerFactory{},
 	}
 
 	// Apply options

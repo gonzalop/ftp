@@ -212,10 +212,8 @@ func (aw *asciiWriter) Read(p []byte) (n int, err error) {
 				// Next loop iteration will copy the LF
 			} else if len(peeked) == 1 {
 				// Only CR in buffer. Is it EOF?
-				// Try to peek more.
-				// If we can't get more data now, we MUST return to avoid blocking.
-				// But we don't know if next byte is LF.
-				// Safest is to return what we have and let next Read deal with it.
+				// Safest is to return what we have and let next Read deal with it,
+				// and avoid blocking for now.
 				return n, nil
 			} else {
 				// Single CR, copy it

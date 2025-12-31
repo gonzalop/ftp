@@ -240,6 +240,56 @@ driver, _ := server.NewFSDriver("/var/ftp/default",
 )
 ```
 
+### Alternative Transports
+
+The server supports custom transports (QUIC, Unix sockets, etc.) through the `WithListenerFactory` option:
+
+```go
+// Implement the ListenerFactory interface
+type QuicListenerFactory struct {
+    quicConn quic.Connection
+}
+
+func (f *QuicListenerFactory) Listen(network, address string) (net.Listener, error) {
+    return &QuicStreamListener{quicConn: f.quicConn}, nil
+}
+
+// Use with FTP server
+srv, _ := server.NewServer(":21",
+    server.WithDriver(driver),
+    server.WithListenerFactory(&QuicListenerFactory{...}),
+    server.WithDisableCommands(server.ActiveModeCommands...),
+)
+```
+
+See [ALTERNATIVE_TRANSPORTS.md](../ALTERNATIVE_TRANSPORTS.md) for details.
+
+### Command Control
+
+Disable specific FTP commands for security or transport compatibility:
+
+```go
+// Disable active mode for QUIC
+srv, _ := server.NewServer(":21",
+    server.WithDriver(driver),
+    server.WithDisableCommands(server.ActiveModeCommands...),
+)
+
+// Create read-only server
+srv, _ := server.NewServer(":21",
+    server.WithDriver(driver),
+    server.WithDisableCommands(server.WriteCommands...),
+)
+
+// Disable legacy commands
+srv, _ := server.NewServer(":21",
+    server.WithDriver(driver),
+    server.WithDisableCommands(server.LegacyCommands...),
+)
+```
+
+Predefined command groups: `ActiveModeCommands`, `WriteCommands`, `LegacyCommands`, `SiteCommands`.
+
 ## Architecture
 
 ### Server

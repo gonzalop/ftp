@@ -347,6 +347,27 @@ err := client.NoOp()
 
 **Note:** If you use `WithIdleTimeout` when creating the client, automatic keep-alive is handled for you. The `NoOp()` method is for manual control when needed.
 
+### Alternative Transports
+
+The client supports custom transports (QUIC, Unix sockets, etc.) through the `WithCustomDialer` option:
+
+```go
+// Implement the Dialer interface
+type QuicDialer struct {
+    quicConn quic.Connection
+}
+
+func (d *QuicDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+    stream, _ := d.quicConn.OpenStreamSync(ctx)
+    return quicconn.NewQuicConn(stream, d.quicConn), nil
+}
+
+// Use with FTP client
+client, _ := ftp.Dial("server:21", ftp.WithCustomDialer(&QuicDialer{quicConn: conn}))
+```
+
+The custom dialer is used for passive mode data connections. See [ALTERNATIVE_TRANSPORTS.md](../ALTERNATIVE_TRANSPORTS.md) for details.
+
 ## API Reference
 
 For complete API documentation, see [![Go Reference](https://pkg.go.dev/badge/github.com/gonzalop/ftp.svg)](https://pkg.go.dev/github.com/gonzalop/ftp)

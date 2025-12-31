@@ -1,6 +1,7 @@
 package ftp
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -386,7 +387,23 @@ func (c *Client) openPassiveDataConn() (net.Conn, error) {
 	}
 
 	// Connect to the data port
-	dataConn, err := c.dialer.Dial("tcp", addr)
+	var dataConn net.Conn
+	var err error
+
+	if c.customDialer != nil {
+		// Use custom dialer with context
+		ctx := context.Background()
+		if c.timeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, c.timeout)
+			defer cancel()
+		}
+		dataConn, err = c.customDialer.DialContext(ctx, "tcp", addr)
+	} else {
+		// Use standard dialer
+		dataConn, err = c.dialer.Dial("tcp", addr)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to data port: %w", err)
 	}

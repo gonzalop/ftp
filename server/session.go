@@ -495,6 +495,12 @@ func (s *session) handleCommand(line string) {
 		return
 	}
 
+	// Check if command is disabled
+	if s.server.disabledCommands[cmd] {
+		s.reply(502, "Command not implemented.")
+		return
+	}
+
 	// Handle special commands that return errors
 	var err error
 	switch cmd {

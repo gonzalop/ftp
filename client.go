@@ -2,6 +2,7 @@ package ftp
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -13,6 +14,12 @@ import (
 	"sync"
 	"time"
 )
+
+// Dialer is an interface for establishing data connections.
+// This allows custom transport implementations (e.g., QUIC, Unix sockets).
+type Dialer interface {
+	DialContext(ctx context.Context, network, address string) (net.Conn, error)
+}
 
 // Client represents an FTP client connection.
 type Client struct {
@@ -38,8 +45,11 @@ type Client struct {
 	// logger is used for debug logging
 	logger *slog.Logger
 
-	// dialer is used to establish connections
+	// dialer is used to establish connections (standard TCP)
 	dialer *net.Dialer
+
+	// customDialer is used for custom transports (e.g., QUIC)
+	customDialer Dialer
 
 	// host and port for the connection
 	host string

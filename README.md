@@ -41,10 +41,10 @@ func main() {
     // and automatically logs in (default: anonymous)
     client, _ := ftp.Connect("ftp://ftp.example.com")
     defer client.Quit()
-    
+
     // Upload file
     client.UploadFile("local.txt", "remote.txt")
-    
+
     // Download file
     client.DownloadFile("remote.txt", "download.txt")
 }
@@ -86,6 +86,7 @@ func main() {
 - **Modern Extensions** - MLST/MLSD, SIZE, MDTM, HASH support
 - **IPv6 Support** - Full IPv6 via EPSV/EPRT (RFC 2428)
 - **Rich Errors** - Detailed protocol error context
+- **Transport-Agnostic** - Pluggable dialer interface for alternative transports (QUIC, Unix sockets, etc.)
 
 **[→ Full feature list and API reference](docs/client.md)**
 
@@ -101,6 +102,8 @@ func main() {
 - **IP-Based Access Control** - Authenticate with client IP for security policies
 - **Secure by Default** - Built-in path validation and chroot support
 - **Extensible** - Custom authentication and driver interfaces
+- **Transport-Agnostic** - Pluggable listener factory for alternative transports (QUIC, Unix sockets, etc.)
+- **Command Control** - Disable specific commands (i.e.,for security or transport compatibility)
 
 **[→ Full server documentation](docs/server.md)**
 

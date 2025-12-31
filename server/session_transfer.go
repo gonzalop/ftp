@@ -478,14 +478,14 @@ func (s *session) listenPassive() (net.Listener, error) {
 			offset := (startOffset + i) % rangeLen
 			port := int(int32(minPort) + offset)
 
-			ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+			ln, err := s.server.listenerFactory.Listen("tcp", fmt.Sprintf(":%d", port))
 			if err == nil {
 				return ln, nil
 			}
 		}
 		return nil, fmt.Errorf("no available ports in range [%d, %d]", minPort, maxPort)
 	}
-	return net.Listen("tcp", ":0")
+	return s.server.listenerFactory.Listen("tcp", ":0")
 }
 
 func (s *session) handlePASV(_ string) {
