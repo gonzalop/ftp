@@ -395,27 +395,23 @@ func (s *session) startCommandReader(done chan struct{}) chan command {
 
 // readCommand reads a line from the reader with a limit.
 func (s *session) readCommand() (string, error) {
-	var line []byte
-	for {
-		// Protect reader access (needed because reader might be swapped by AUTH TLS)
-		s.mu.Lock()
-		r := s.reader
-		s.mu.Unlock()
+	// Protect reader access (needed because reader might be swapped by AUTH TLS)
+	s.mu.Lock()
+	r := s.reader
+	s.mu.Unlock()
 
-		b, err := r.ReadByte()
-		if err != nil {
-			return string(line), err
-		}
-
-		if len(line) >= MaxCommandLength {
+	// Read up to the next newline.
+	// Since bufio.Reader has a default size of 4KB and MaxCommandLength is 4096,
+	// ReadSlice will return bufio.ErrBufferFull if the line is longer than 4096 bytes.
+	line, err := r.ReadSlice('\n')
+	if err != nil {
+		if err == bufio.ErrBufferFull {
 			return "", fmt.Errorf("command too long")
 		}
-
-		if b == '\n' {
-			return string(line), nil
-		}
-		line = append(line, b)
+		return string(line), err
 	}
+
+	return string(line), nil
 }
 
 // close closes the session and underlying connection.

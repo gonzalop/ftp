@@ -1,8 +1,10 @@
 package server
 
 import (
+	"bufio"
 	"context"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -165,5 +167,78 @@ func TestMaxConnectionsPerIP(t *testing.T) {
 	}
 	if err := c3.Quit(); err != nil {
 		t.Logf("c3.Quit failed: %v", err)
+	}
+}
+
+func TestMaxCommandLength(t *testing.T) {
+	// 1. Setup server
+	rootDir := t.TempDir()
+	driver, err := NewFSDriver(rootDir, WithAuthenticator(func(u, p, h string, _ net.IP) (string, bool, error) {
+		return rootDir, false, nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	server, err := NewServer(":0", WithDriver(driver))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+
+	go func() {
+		_ = server.Serve(ln)
+	}()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = server.Shutdown(ctx)
+	}()
+
+	// 2. Connect via raw TCP
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	reader := bufio.NewReader(conn)
+
+	// Read greeting
+	_, err = reader.ReadString('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 3. Send command that is exactly MaxCommandLength + 1
+	// MaxCommandLength is 4096.
+	// We'll send "USER " + 4092 'A's + "\n" = 4098 bytes (including \n)
+	// ReadSlice('\n') will see more than 4096 before \n.
+	oversized := "USER " + strings.Repeat("A", 4100) + "\n"
+	_, err = conn.Write([]byte(oversized))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 4. Expect 500 error
+	resp, err := reader.ReadString('\n')
+	if err != nil {
+		t.Fatalf("Failed to read response: %v", err)
+	}
+
+	if !strings.HasPrefix(resp, "500 ") {
+		t.Errorf("Expected 500 response for oversized command, got: %s", resp)
+	}
+
+	// 5. Expect connection to be closed by server
+	_ = conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	_, err = reader.ReadByte()
+	if err == nil {
+		t.Error("Expected connection to be closed after oversized command, but it remains open")
 	}
 }
