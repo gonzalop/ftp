@@ -366,7 +366,7 @@ func (d *QuicDialer) DialContext(ctx context.Context, network, address string) (
 client, _ := ftp.Dial("server:21", ftp.WithCustomDialer(&QuicDialer{quicConn: conn}))
 ```
 
-The custom dialer is used for passive mode data connections. See [ALTERNATIVE_TRANSPORTS.md](../ALTERNATIVE_TRANSPORTS.md) for details.
+The custom dialer is used for passive mode data connections.
 
 **Working Example:** See [examples/quic/](../examples/quic/) for a complete, functional FTP-over-QUIC implementation.
 
