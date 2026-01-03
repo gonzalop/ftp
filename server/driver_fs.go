@@ -380,55 +380,7 @@ func (c *fsContext) Rename(fromPath, toPath string) error {
 		return err
 	}
 
-	srcFull := filepath.Join(c.rootPath, srcRel)
-	dstFull := filepath.Join(c.rootPath, dstRel)
-
-	// Security check: ensure both source and destination are within the root
-	// We use EvalSymlinks to resolve all path components.
-	// Note: EvalSymlinks fails if the path doesn't exist, which is fine for src.
-	// For dst, we check its parent directory if it doesn't exist yet.
-	realSrc, err := filepath.EvalSymlinks(srcFull)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return os.ErrNotExist
-		}
-		if os.IsPermission(err) {
-			return os.ErrPermission
-		}
-		// Return a generic error to avoid leaking the absolute path
-		return errors.New("failed to resolve source path")
-	}
-	if !strings.HasPrefix(realSrc, c.rootPath) {
-		return os.ErrPermission
-	}
-
-	// For destination, we check the parent directory
-	dstParent := filepath.Dir(dstFull)
-	realDstParent, err := filepath.EvalSymlinks(dstParent)
-	if err == nil {
-		if !strings.HasPrefix(realDstParent, c.rootPath) {
-			return os.ErrPermission
-		}
-	} else if !os.IsNotExist(err) {
-		if os.IsPermission(err) {
-			return os.ErrPermission
-		}
-		return errors.New("failed to resolve destination path")
-	}
-
-	// Safety check: ensure we can resolve root path
-	// os.Root does not support Rename for now.
-	if err := os.Rename(srcFull, dstFull); err != nil {
-		if os.IsNotExist(err) {
-			return os.ErrNotExist
-		}
-		if os.IsPermission(err) {
-			return os.ErrPermission
-		}
-		// Return a generic error to avoid leaking the absolute path
-		return errors.New("rename failed")
-	}
-	return nil
+	return c.rootHandle.Rename(srcRel, dstRel)
 }
 
 // ListDir returns a list of files in the specified directory.
@@ -551,34 +503,7 @@ func (c *fsContext) SetTime(path string, t time.Time) error {
 		return err
 	}
 
-	fullPath := filepath.Join(c.rootPath, rel)
-
-	// Security check: ensure the target is within the root
-	// This prevents symlink traversal attacks (e.g. symlink in root -> /etc/passwd)
-	realPath, err := filepath.EvalSymlinks(fullPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return os.ErrNotExist
-		}
-		if os.IsPermission(err) {
-			return os.ErrPermission
-		}
-		return errors.New("failed to resolve path")
-	}
-	if !strings.HasPrefix(realPath, c.rootPath) {
-		return os.ErrPermission
-	}
-
-	if err := os.Chtimes(fullPath, t, t); err != nil {
-		if os.IsNotExist(err) {
-			return os.ErrNotExist
-		}
-		if os.IsPermission(err) {
-			return os.ErrPermission
-		}
-		return errors.New("failed to set time")
-	}
-	return nil
+	return c.rootHandle.Chtimes(rel, t, t)
 }
 
 // Chmod changes the mode of the file.
@@ -598,15 +523,7 @@ func (c *fsContext) Chmod(path string, mode os.FileMode) error {
 		return err
 	}
 
-	// Open the file through the root handle to enforce the jail
-	// We use O_RDONLY because we just need a handle to call Chmod
-	f, err := c.rootHandle.OpenFile(rel, os.O_RDONLY, 0)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	return f.Chmod(mode)
+	return c.rootHandle.Chmod(rel, mode)
 }
 
 func (c *fsContext) GetSettings() *Settings {
