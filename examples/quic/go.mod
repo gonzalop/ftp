@@ -1,6 +1,6 @@
 module github.com/gonzalop/ftp/examples/quic
 
-go 1.24.0
+go 1.25
 
 // Use local FTP library
 replace github.com/gonzalop/ftp => ../..
