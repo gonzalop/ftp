@@ -492,6 +492,16 @@ type trackingConn struct {
 	server *Server
 }
 
+func (c *trackingConn) ReadFrom(r io.Reader) (int64, error) {
+	// io.Copy calls c.Conn.ReadFrom if available
+	return io.Copy(c.Conn, r)
+}
+
+func (c *trackingConn) WriteTo(w io.Writer) (int64, error) {
+	// io.Copy calls c.Conn.WriteTo if available
+	return io.Copy(w, c.Conn)
+}
+
 func (c *trackingConn) Close() error {
 	c.server.trackConnection(c.Conn, false)
 	return c.Conn.Close()

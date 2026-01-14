@@ -94,7 +94,13 @@ func (s *session) handleRETR(path string) {
 		// Track transfer metrics
 		startTime := time.Now()
 
-		// Apply bandwidth limiting to the connection (we're writing to it)
+		// Apply bandwidth limiting to the connection (we're writing to it).
+		// Note: If no rate limiting is configured, rateLimitWriter returns the raw
+		// data connection (trackingConn). Since trackingConn implements io.ReaderFrom,
+		// io.CopyBuffer will call its ReadFrom method, which in turn calls the
+		// underlying TCPConn's ReadFrom. On Linux, this enables the use of
+		// sendfile(2) for zero-copy transfers when the source is a local file
+		// (binary mode) and the connection is not TLS-protected.
 		dst := s.rateLimitWriter(conn)
 
 		bytesTransferred, err := copyWithPooledBuffer(dst, src)
@@ -218,7 +224,13 @@ func (s *session) handleSTOR(path string) {
 		if s.transferType == "A" {
 			src = newASCIIWriter(conn)
 		}
-		// Apply bandwidth limiting
+		// Apply bandwidth limiting.
+		// Note: If no rate limiting is configured, rateLimitReader returns the raw
+		// data connection (trackingConn). Since trackingConn implements io.WriterTo,
+		// and the destination implements io.ReaderFrom (e.g. *os.File),
+		// io.CopyBuffer will use the optimized path. On Linux, this enables the
+		// use of splice(2) for zero-copy transfers from the socket to the file
+		// when in binary mode and not using TLS.
 		src = s.rateLimitReader(src)
 
 		bytesTransferred, err := copyWithPooledBuffer(file, src)
@@ -313,7 +325,13 @@ func (s *session) handleAPPE(path string) {
 		if s.transferType == "A" {
 			src = newASCIIWriter(conn)
 		}
-		// Apply bandwidth limiting
+		// Apply bandwidth limiting.
+		// Note: If no rate limiting is configured, rateLimitReader returns the raw
+		// data connection (trackingConn). Since trackingConn implements io.WriterTo,
+		// and the destination implements io.ReaderFrom (e.g. *os.File),
+		// io.CopyBuffer will use the optimized path. On Linux, this enables the
+		// use of splice(2) for zero-copy transfers from the socket to the file
+		// when in binary mode and not using TLS.
 		src = s.rateLimitReader(src)
 
 		bytesTransferred, err := copyWithPooledBuffer(file, src)
@@ -380,7 +398,13 @@ func (s *session) handleSTOU(_ string) {
 		if s.transferType == "A" {
 			src = newASCIIWriter(conn)
 		}
-		// Apply bandwidth limiting
+		// Apply bandwidth limiting.
+		// Note: If no rate limiting is configured, rateLimitReader returns the raw
+		// data connection (trackingConn). Since trackingConn implements io.WriterTo,
+		// and the destination implements io.ReaderFrom (e.g. *os.File),
+		// io.CopyBuffer will use the optimized path. On Linux, this enables the
+		// use of splice(2) for zero-copy transfers from the socket to the file
+		// when in binary mode and not using TLS.
 		src = s.rateLimitReader(src)
 
 		bytesTransferred, err := copyWithPooledBuffer(file, src)
