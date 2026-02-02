@@ -132,7 +132,7 @@ type Server struct {
 
 // transferBufferPool is a pool of byte slices used for data transfers to reduce allocations.
 var transferBufferPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		buf := make([]byte, 32*1024)
 		return &buf
 	},
@@ -146,19 +146,19 @@ func copyWithPooledBuffer(dst io.Writer, src io.Reader) (int64, error) {
 }
 
 var controlReaderPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return bufio.NewReader(nil)
 	},
 }
 
 var telnetReaderPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return newTelnetReader(nil)
 	},
 }
 
 var controlWriterPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return bufio.NewWriter(nil)
 	},
 }

@@ -130,10 +130,7 @@ func (r *reader) Read(p []byte) (n int, err error) {
 	// Limit chunk size to avoid excessive waits
 	// Use smaller chunks for better rate limiting accuracy
 	const maxChunkSize = 8 * 1024 // 8KB chunks
-	readSize := len(p)
-	if readSize > maxChunkSize {
-		readSize = maxChunkSize
-	}
+	readSize := min(len(p), maxChunkSize)
 
 	// Consume tokens for this read
 	r.limiter.take(readSize)
@@ -170,10 +167,7 @@ func (w *writer) Write(p []byte) (n int, err error) {
 	for totalWritten < len(p) {
 		// Calculate chunk size
 		remaining := len(p) - totalWritten
-		chunkSize := remaining
-		if chunkSize > maxChunkSize {
-			chunkSize = maxChunkSize
-		}
+		chunkSize := min(remaining, maxChunkSize)
 
 		// Consume tokens before writing
 		w.limiter.take(chunkSize)

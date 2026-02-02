@@ -78,10 +78,8 @@ func (s *session) handleRETR(path string) {
 	s.restartOffset = 0
 
 	ctx := s.startTransfer()
-	s.transferWG.Add(1)
 
-	go func() {
-		defer s.transferWG.Done()
+	s.transferWG.Go(func() {
 		defer s.endTransfer()
 		defer file.Close()
 		defer conn.Close()
@@ -159,7 +157,7 @@ func (s *session) handleRETR(path string) {
 
 		s.endTransfer()
 		s.reply(226, "Transfer complete.")
-	}()
+	})
 }
 func (s *session) handleSTOR(path string) {
 	if !s.isLoggedIn {
@@ -209,10 +207,8 @@ func (s *session) handleSTOR(path string) {
 	s.restartOffset = 0
 
 	ctx := s.startTransfer()
-	s.transferWG.Add(1)
 
-	go func() {
-		defer s.transferWG.Done()
+	s.transferWG.Go(func() {
 		defer s.endTransfer()
 		defer file.Close()
 		defer conn.Close()
@@ -287,7 +283,7 @@ func (s *session) handleSTOR(path string) {
 
 		s.endTransfer()
 		s.reply(226, "Transfer complete.")
-	}()
+	})
 }
 func (s *session) handleAPPE(path string) {
 	if !s.isLoggedIn {
@@ -312,10 +308,8 @@ func (s *session) handleAPPE(path string) {
 	s.reply(150, "Opening data connection for APPE.")
 
 	ctx := s.startTransfer()
-	s.transferWG.Add(1)
 
-	go func() {
-		defer s.transferWG.Done()
+	s.transferWG.Go(func() {
 		defer s.endTransfer()
 		defer file.Close()
 		defer conn.Close()
@@ -356,7 +350,7 @@ func (s *session) handleAPPE(path string) {
 
 		s.endTransfer()
 		s.reply(226, "Transfer complete.")
-	}()
+	})
 }
 
 func (s *session) handleSTOU(_ string) {
@@ -385,10 +379,8 @@ func (s *session) handleSTOU(_ string) {
 	s.reply(150, fmt.Sprintf("FILE: %s", path))
 
 	ctx := s.startTransfer()
-	s.transferWG.Add(1)
 
-	go func() {
-		defer s.transferWG.Done()
+	s.transferWG.Go(func() {
 		defer s.endTransfer()
 		defer file.Close()
 		defer conn.Close()
@@ -429,7 +421,7 @@ func (s *session) handleSTOU(_ string) {
 
 		s.endTransfer()
 		s.reply(226, "Transfer complete.")
-	}()
+	})
 }
 
 func (s *session) handleTYPE(arg string) {
@@ -498,7 +490,7 @@ func (s *session) listenPassive() (net.Listener, error) {
 		// Get a starting offset using round-robin
 		startOffset := atomic.AddInt32(&s.server.nextPassivePort, 1)
 
-		for i := int32(0); i < rangeLen; i++ {
+		for i := range rangeLen {
 			offset := (startOffset + i) % rangeLen
 			port := int(int32(minPort) + offset)
 

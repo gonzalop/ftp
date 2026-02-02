@@ -42,8 +42,8 @@ func (s *session) handleCWD(path string) {
 				fmt.Fprintf(s.writer, "250-Message:\r\n")
 				// Trim trailing newlines to avoid an extra empty line at the end
 				msg := strings.TrimRight(string(b), "\r\n")
-				lines := strings.Split(msg, "\n")
-				for _, line := range lines {
+				lines := strings.SplitSeq(msg, "\n")
+				for line := range lines {
 					line = strings.TrimRight(line, "\r")
 					fmt.Fprintf(s.writer, "250-%s\r\n", line)
 				}
@@ -69,8 +69,8 @@ func (s *session) handleLIST(arg string) {
 	var path string
 	var recursive bool
 
-	args := strings.Fields(arg)
-	for _, a := range args {
+	args := strings.FieldsSeq(arg)
+	for a := range args {
 		if strings.HasPrefix(a, "-") {
 			if strings.Contains(a, "R") {
 				recursive = true

@@ -88,7 +88,7 @@ type Client struct {
 
 // transferBufferPool is a pool of byte slices used for data transfers to reduce allocations.
 var transferBufferPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		buf := make([]byte, 32*1024)
 		return &buf
 	},
