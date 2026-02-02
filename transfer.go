@@ -28,13 +28,13 @@ func (c *Client) StoreUnique(r io.Reader) (string, error) {
 	}
 
 	// The filename is in the response message (150 FILE: <name>)
-	// Standard response format for STOU 150 is "FILE: %s"
 	msg := resp.Message
+	prefix := "FILE: "
 	var filename string
-	if strings.HasPrefix(msg, "FILE: ") {
-		filename = strings.TrimPrefix(msg, "FILE: ")
+	if len(msg) >= len(prefix) && strings.EqualFold(msg[:len(prefix)], prefix) {
+		filename = msg[len(prefix):]
 	} else {
-		filename = msg // Best effort
+		filename = msg
 	}
 
 	// Apply bandwidth limiting if configured
