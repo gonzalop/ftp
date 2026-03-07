@@ -88,7 +88,7 @@ func TestServer_BandwidthLimit(t *testing.T) {
 	rootDir := t.TempDir()
 
 	driver, err := server.NewFSDriver(rootDir,
-		server.WithAuthenticator(func(user, pass, host string, remoteIP net.IP) (string, bool, error) {
+		server.WithAuthenticator(func(_, _, _ string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil
 		}),
 	)

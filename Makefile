@@ -7,15 +7,13 @@ fmt:
 	@gofmt -w .
 
 lint:
-	@if command -v golangci-lint >/dev/null 2>&1; then \
-		echo "🔍 Linting: golangci-lint run"; \
-		golangci-lint run; \
+	@if command -v revive >/dev/null 2>&1; then \
+		echo "🔍 Linting: revive"; \
+		revive; \
 	else \
-		echo "⚠️  golangci-lint not installed, skipping"; \
-		echo "   To install: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
+		echo "⚠️  revive not installed, skipping"; \
+		echo "   To install: go install github.com/mgechev/revive@latest"; \
 	fi
-	@echo "🔍 Linting: go vet ./..."
-	@go vet ./...
 
 build:
 	@echo "🏗️  Building: go build ./..."

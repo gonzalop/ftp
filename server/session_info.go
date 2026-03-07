@@ -112,11 +112,20 @@ func (s *session) handleMLSD(arg string) {
 		return
 	}
 
-	path := arg
-	entries, err := s.fs.ListDir(path)
-	if err != nil {
-		s.replyError(err)
-		return
+	// Parse flags and path
+	// MLSD [-R] [path]
+	var path string
+	var recursive bool
+
+	args := strings.FieldsSeq(arg)
+	for a := range args {
+		if strings.HasPrefix(a, "-") {
+			if strings.Contains(a, "R") {
+				recursive = true
+			}
+		} else {
+			path = a
+		}
 	}
 
 	conn, err := s.connData()
@@ -128,11 +137,59 @@ func (s *session) handleMLSD(arg string) {
 
 	s.reply(150, "MLSD listing started.")
 
-	for _, entry := range entries {
-		s.writeMLEntry(conn, entry)
+	if recursive {
+		err = s.mlsdRecursive(conn, path, path)
+	} else {
+		var entries []os.FileInfo
+		entries, err = s.fs.ListDir(path)
+		if err == nil {
+			for _, entry := range entries {
+				s.writeMLEntry(conn, entry, "")
+			}
+		}
+	}
+
+	if err != nil {
+		s.reply(550, "Error listing directory: "+err.Error())
+		return
 	}
 
 	s.reply(226, "MLSD listing complete.")
+}
+
+func (s *session) mlsdRecursive(w io.Writer, root, currentPath string) error {
+	entries, err := s.fs.ListDir(currentPath)
+	if err != nil {
+		return err
+	}
+
+	// Calculate display path for entries
+	displayDir := currentPath
+	if displayDir == "" || displayDir == "." {
+		displayDir = ""
+	}
+
+	for _, entry := range entries {
+		s.writeMLEntry(w, entry, displayDir)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() && entry.Name() != "." && entry.Name() != ".." {
+			subPath := currentPath
+			if subPath == "" || subPath == "." {
+				subPath = entry.Name()
+			} else {
+				if strings.HasSuffix(subPath, "/") {
+					subPath += entry.Name()
+				} else {
+					subPath += "/" + entry.Name()
+				}
+			}
+			_ = s.mlsdRecursive(w, root, subPath)
+		}
+	}
+
+	return nil
 }
 
 func (s *session) handleMLST(arg string) {
@@ -151,20 +208,30 @@ func (s *session) handleMLST(arg string) {
 	if err := s.writer.WriteByte(' '); err != nil {
 		return
 	}
-	s.writeMLEntry(s.writer, info)
+	s.writeMLEntry(s.writer, info, "")
 	_, _ = s.writer.WriteString("250 End\r\n")
 	_ = s.writer.Flush()
 }
 
-func (s *session) writeMLEntry(w io.Writer, info os.FileInfo) {
+func (s *session) writeMLEntry(w io.Writer, info os.FileInfo, dir string) {
 	// Format: type=file;size=123;modify=20210101120000; name
+	// If dir is provided, we prepend it to the name for recursive listings
 	t := "file"
 	if info.IsDir() {
 		t = "dir"
 	}
 
+	name := info.Name()
+	if dir != "" {
+		if strings.HasSuffix(dir, "/") {
+			name = dir + name
+		} else {
+			name = dir + "/" + name
+		}
+	}
+
 	// RFC 3659 Section 2.3: "Time values are always represented in UTC"
 	sStr := fmt.Sprintf("type=%s;size=%d;modify=%s; %s\r\n",
-		t, info.Size(), info.ModTime().UTC().Format("20060102150405"), info.Name())
+		t, info.Size(), info.ModTime().UTC().Format("20060102150405"), name)
 	fmt.Fprint(w, sStr)
 }

@@ -60,6 +60,55 @@ func TestClientExtensions(t *testing.T) {
 	t.Run("Chmod", func(t *testing.T) { testChmod(t, c, rootDir) })
 	t.Run("Hash", func(t *testing.T) { testHash(t, c, rootDir) })
 	t.Run("Quote", func(t *testing.T) { testQuote(t, c) })
+	t.Run("MLSDRecursive", func(t *testing.T) { testMLSDRecursive(t, c, rootDir) })
+}
+
+func testMLSDRecursive(t *testing.T, c *ftp.Client, rootDir string) {
+	// Create nested structure:
+	// root/a.txt
+	// root/dir1/b.txt
+	// root/dir1/dir2/c.txt
+
+	if err := os.MkdirAll(filepath.Join(rootDir, "dir1", "dir2"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(rootDir, "a.txt"), []byte("a"), 0644)
+	_ = os.WriteFile(filepath.Join(rootDir, "dir1", "b.txt"), []byte("b"), 0644)
+	_ = os.WriteFile(filepath.Join(rootDir, "dir1", "dir2", "c.txt"), []byte("c"), 0644)
+
+	// We use Quote to send raw MLSD -R because the current client API
+	// might not support passing flags to List (MLSD) easily or might
+	// default to non-recursive.
+	// Actually, the client uses List() which calls MLSD.
+
+	// Since we want to test the server's new functionality, we can use Quote
+	// but Quote doesn't handle the data connection for us easily.
+	// We'll use c.List("-R") if it supports it, or just use Quote and manual data conn.
+	// Looking at client.go, c.List(path) sends MLSD <path>.
+
+	entries, err := c.MLListRecursive("")
+	if err != nil {
+		t.Fatalf("MLListRecursive failed: %v", err)
+	}
+
+	found := make(map[string]bool)
+	for _, e := range entries {
+		found[e.Name] = true
+	}
+
+	expected := []string{
+		"a.txt",
+		"dir1",
+		"dir1/b.txt",
+		"dir1/dir2",
+		"dir1/dir2/c.txt",
+	}
+
+	for _, exp := range expected {
+		if !found[exp] {
+			t.Errorf("Expected entry %s not found in MLSD -R output. Found: %v", exp, found)
+		}
+	}
 }
 
 func testSetModTime(t *testing.T, c *ftp.Client, rootDir string) {

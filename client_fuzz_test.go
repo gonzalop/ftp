@@ -11,7 +11,7 @@ func FuzzParseFeatures(f *testing.F) {
 	f.Add("SIZE\nMDTM\nREST STREAM")
 	f.Add("UTF8\nTVFS")
 
-	f.Fuzz(func(t *testing.T, s string) {
+	f.Fuzz(func(_ *testing.T, s string) {
 		lines := strings.Split(s, "\n")
 		// Just ensure it doesn't panic
 		_ = parseFeatureLines(lines)

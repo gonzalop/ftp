@@ -117,6 +117,41 @@ func (c *Client) MLList(path string) ([]*MLEntry, error) {
 		return nil, err
 	}
 
+	return c.readMLList(dataConn)
+}
+
+// MLListRecursive returns a machine-readable directory listing of the specified
+// path and all its subdirectories using the MLSD -R command.
+//
+// Note: This is a custom extension supported by this library's server.
+//
+// Example:
+//
+//	entries, err := client.MLListRecursive("/pub")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	for _, entry := range entries {
+//	    fmt.Printf("%s: %d bytes\n", entry.Name, entry.Size)
+//	}
+func (c *Client) MLListRecursive(path string) ([]*MLEntry, error) {
+	// Open data connection and send MLSD -R command
+	var dataConn net.Conn
+	var err error
+
+	if path == "" {
+		_, dataConn, err = c.cmdDataConnFrom("MLSD", "-R")
+	} else {
+		_, dataConn, err = c.cmdDataConnFrom("MLSD", "-R", path)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return c.readMLList(dataConn)
+}
+
+func (c *Client) readMLList(dataConn net.Conn) ([]*MLEntry, error) {
 	// Read the directory listing
 	var entries []*MLEntry
 	scanner := bufio.NewScanner(dataConn)

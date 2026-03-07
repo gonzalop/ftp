@@ -204,6 +204,7 @@ type ListingParser interface {
 // UnixParser parses Unix-style directory entries.
 type UnixParser struct{}
 
+// Parse parses a Unix-style directory entry.
 func (p *UnixParser) Parse(line string) (*Entry, bool) {
 	fields := strings.Fields(line)
 	// Supports both 9-field and 8-field formats (and numeric perms)
@@ -220,6 +221,7 @@ func (p *UnixParser) Parse(line string) (*Entry, bool) {
 // DOSParser parses DOS/Windows-style directory entries.
 type DOSParser struct{}
 
+// Parse parses a DOS-style directory entry.
 func (p *DOSParser) Parse(line string) (*Entry, bool) {
 	fields := strings.Fields(line)
 	if len(fields) < 4 {
@@ -238,6 +240,7 @@ func (p *DOSParser) Parse(line string) (*Entry, bool) {
 // EPLFParser parses EPLF entries.
 type EPLFParser struct{}
 
+// Parse parses an EPLF directory entry.
 func (p *EPLFParser) Parse(line string) (*Entry, bool) {
 	if !strings.HasPrefix(line, "+") {
 		return nil, false
@@ -254,6 +257,7 @@ type CompositeParser struct {
 	Parsers []ListingParser
 }
 
+// Parse tries multiple parsers to find the first one that can parse the line.
 func (p *CompositeParser) Parse(line string) *Entry {
 	trimmed := strings.TrimSpace(line)
 	if trimmed == "" {

@@ -58,7 +58,7 @@ func setupServer(t *testing.T) (string, func(), string) {
 
 	// 2. Start Server
 	driver, err := server.NewFSDriver(rootDir,
-		server.WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
+		server.WithAuthenticator(func(_, _, _ string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil // Allow write access in rootDir
 		}),
 	)
@@ -194,7 +194,7 @@ func TestClient_ExplicitTLS(t *testing.T) {
 	// 2. Start Server with TLS support
 	rootDir := t.TempDir()
 	driver, err := server.NewFSDriver(rootDir,
-		server.WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
+		server.WithAuthenticator(func(_, _, _ string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil // Allow write access
 		}),
 	)
@@ -271,7 +271,7 @@ func TestClient_ImplicitTLS(t *testing.T) {
 	// 2. Start Server with TLS support
 	rootDir := t.TempDir()
 	driver, err := server.NewFSDriver(rootDir,
-		server.WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
+		server.WithAuthenticator(func(_, _, _ string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil // Allow write access
 		}),
 	)
@@ -423,7 +423,7 @@ func TestClient_ActiveModeIPv6(t *testing.T) {
 
 	// 2. Start Server
 	driver, err := server.NewFSDriver(rootDir,
-		server.WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
+		server.WithAuthenticator(func(_, _, _ string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil // Allow write access in rootDir
 		}),
 	)
@@ -1103,7 +1103,7 @@ func TestAuthenticationFailure(t *testing.T) {
 
 	// Create driver with authenticator that validates passwords
 	driver, err := server.NewFSDriver(rootDir,
-		server.WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
+		server.WithAuthenticator(func(user, pass, _ string, _ net.IP) (string, bool, error) {
 			// Only accept "anonymous" with password "anonymous"
 			if user == "anonymous" && pass == "anonymous" {
 				return rootDir, false, nil
@@ -1239,7 +1239,7 @@ func TestConnect_FTPS(t *testing.T) {
 	// 2. Start Server with Implicit TLS support
 	rootDir := t.TempDir()
 	driver, err := server.NewFSDriver(rootDir,
-		server.WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
+		server.WithAuthenticator(func(_, _, _ string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil
 		}),
 	)
@@ -1309,7 +1309,7 @@ func TestConnect_FTPExplicit(t *testing.T) {
 	// 2. Start Server
 	rootDir := t.TempDir()
 	driver, err := server.NewFSDriver(rootDir,
-		server.WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
+		server.WithAuthenticator(func(_, _, _ string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil
 		}),
 	)
@@ -1365,9 +1365,9 @@ type SlowReader struct {
 
 func (s *SlowReader) Read(p []byte) (n int, err error) {
 	time.Sleep(s.delay)
-	max := 1024
-	if len(p) > max {
-		p = p[:max]
+	maxInt := 1024
+	if len(p) > maxInt {
+		p = p[:maxInt]
 	}
 	return s.r.Read(p)
 }
@@ -1442,7 +1442,7 @@ func TestConnect(t *testing.T) {
 	t.Parallel()
 	// Start a test server with permissive auth
 	rootDir := t.TempDir()
-	driver, err := server.NewFSDriver(rootDir, server.WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
+	driver, err := server.NewFSDriver(rootDir, server.WithAuthenticator(func(_, _, _ string, _ net.IP) (string, bool, error) {
 		return rootDir, false, nil // false = write access
 	}))
 	if err != nil {
@@ -1527,7 +1527,7 @@ func TestConnect(t *testing.T) {
 func TestUploadDownloadFile(t *testing.T) {
 	t.Parallel()
 	rootDir := t.TempDir()
-	driver, err := server.NewFSDriver(rootDir, server.WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
+	driver, err := server.NewFSDriver(rootDir, server.WithAuthenticator(func(_, _, _ string, _ net.IP) (string, bool, error) {
 		return rootDir, false, nil // Write access
 	}))
 	if err != nil {
@@ -1669,7 +1669,7 @@ func TestRecursiveHelpers(t *testing.T) {
 		sort.Strings(expectedPaths)
 
 		var visited []string
-		err := c.Walk("/uploaded", func(path string, info *ftp.Entry, err error) error {
+		err := c.Walk("/uploaded", func(path string, _ *ftp.Entry, err error) error {
 			if err != nil {
 				return err
 			}
@@ -1712,7 +1712,7 @@ func startServer(t *testing.T) (string, *server.Server, string) {
 	rootDir := t.TempDir()
 
 	driver, err := server.NewFSDriver(rootDir,
-		server.WithAuthenticator(func(user, pass, host string, _ net.IP) (string, bool, error) {
+		server.WithAuthenticator(func(_, _, _ string, _ net.IP) (string, bool, error) {
 			return rootDir, false, nil
 		}),
 	)

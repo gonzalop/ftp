@@ -154,13 +154,13 @@ func TestClient_EPSV_Fallback(t *testing.T) {
 	pasvResp := fmt.Sprintf("227 Entering Passive Mode (127,0,0,1,%d,%d).", p1, p2)
 
 	// Scripting the server
-	ms.handlers["EPSV"] = func(c *textproto.Conn, args string) {
+	ms.handlers["EPSV"] = func(c *textproto.Conn, _ string) {
 		_ = c.PrintfLine("502 Command not implemented.")
 	}
-	ms.handlers["PASV"] = func(c *textproto.Conn, args string) {
+	ms.handlers["PASV"] = func(c *textproto.Conn, _ string) {
 		_ = c.PrintfLine("%s", pasvResp)
 	}
-	ms.handlers["LIST"] = func(c *textproto.Conn, args string) {
+	ms.handlers["LIST"] = func(c *textproto.Conn, _ string) {
 		_ = c.PrintfLine("150 File status okay; about to open data connection.")
 
 		// Accept data connection
@@ -227,10 +227,10 @@ func TestClient_EPSV_Success(t *testing.T) {
 	_, portStr, _ := net.SplitHostPort(epsvL.Addr().String())
 	epsvResp := fmt.Sprintf("229 Entering Extended Passive Mode (|||%s|)", portStr)
 
-	ms.handlers["EPSV"] = func(c *textproto.Conn, args string) {
+	ms.handlers["EPSV"] = func(c *textproto.Conn, _ string) {
 		_ = c.PrintfLine("%s", epsvResp)
 	}
-	ms.handlers["LIST"] = func(c *textproto.Conn, args string) {
+	ms.handlers["LIST"] = func(c *textproto.Conn, _ string) {
 		_ = c.PrintfLine("150 File status okay.")
 		dconn, err := ms.dataListener.Accept()
 		if err != nil {
@@ -300,13 +300,13 @@ func TestClient_EPSV_FailButNot502(t *testing.T) {
 	p2 := port % 256
 	pasvResp := fmt.Sprintf("227 Entering Passive Mode (127,0,0,1,%d,%d).", p1, p2)
 
-	ms.handlers["EPSV"] = func(c *textproto.Conn, args string) {
+	ms.handlers["EPSV"] = func(c *textproto.Conn, _ string) {
 		_ = c.PrintfLine("500 Syntax error, command unrecognized.")
 	}
-	ms.handlers["PASV"] = func(c *textproto.Conn, args string) {
+	ms.handlers["PASV"] = func(c *textproto.Conn, _ string) {
 		_ = c.PrintfLine("%s", pasvResp)
 	}
-	ms.handlers["LIST"] = func(c *textproto.Conn, args string) {
+	ms.handlers["LIST"] = func(c *textproto.Conn, _ string) {
 		_ = c.PrintfLine("150 File status okay.")
 		dconn, err := ms.dataListener.Accept()
 		if err != nil {

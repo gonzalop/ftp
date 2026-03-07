@@ -13,7 +13,7 @@ func FuzzParseListLine(f *testing.F) {
 	f.Add("+i8388621.48594,m825718503,r,s280,\tdjb.html")
 	f.Add("+/,m824255907\tdata")
 
-	f.Fuzz(func(t *testing.T, line string) {
+	f.Fuzz(func(_ *testing.T, line string) {
 		// Just ensure it doesn't panic
 		_ = parseListLine(line, nil)
 	})
