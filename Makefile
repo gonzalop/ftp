@@ -33,3 +33,7 @@ coverage:
 	go test -coverprofile=coverage.out -coverpkg=./... ./...
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "✅ Coverage report generated at coverage.html"
+
+clean:
+	@echo "🧹 Cleaning up..."
+	@rm -fv coverage.html coverage.out coverage.txt cpu.out mem.out *.test

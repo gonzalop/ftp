@@ -16,7 +16,7 @@ Thank you for your interest in contributing! This library aims to be a productio
 1. **Fork the repository** and create your branch from `main`
 2. **Write tests** for any new functionality
 3. **Ensure all tests pass**: `go test -v ./...`
-4. **Follow Go conventions**: Run `go fmt` and `go vet`
+4. **Follow Go conventions**: Run `go fmt` and `go fix`
 5. **Update documentation** if you're changing APIs
 6. **Reference any related issues** in your PR description
 
