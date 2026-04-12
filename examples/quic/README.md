@@ -177,7 +177,7 @@ For production use:
 ## Related Documentation
 
 - [Main FTP Library Documentation](../../README.md)
-- [Alternative Transports Guide](../../ALTERNATIVE_TRANSPORTS.md)
+- [Alternative Transports Guide](../../docs/alternative-transports.md)
 - [Server Documentation](../../docs/server.md)
 - [Client Documentation](../../docs/client.md)
 

@@ -129,6 +129,7 @@ Both client and server implement modern FTP standards:
 - **[Server Documentation](docs/server.md)** - Server setup, custom drivers, authentication
 - **[Security Best Practices](docs/security.md)** - TLS configuration, authentication, access control
 - **[Performance Guide](docs/performance.md)** - Tuning, optimization, benchmarking
+- **[Alternative Transports Guide](docs/alternative-transports.md)** - QUIC, Unix sockets, custom transports
 - **[Examples Directory](examples/)** - Working code examples
 - **[Client API (GoDoc)](https://pkg.go.dev/github.com/gonzalop/ftp)** - Client API documentation
 - **[Server API (GoDoc)](https://pkg.go.dev/github.com/gonzalop/ftp/server)** - Server API documentation
