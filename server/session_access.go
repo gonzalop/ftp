@@ -1,6 +1,11 @@
 package server
 
-import "net"
+import (
+	"crypto/rand"
+	"math/big"
+	"net"
+	"time"
+)
 
 func (s *session) handleUSER(user string) error {
 	s.user = user
@@ -20,6 +25,12 @@ func (s *session) handlePASS(pass string) error {
 			"user", s.user,
 			"reason", err.Error(),
 		)
+
+		// Mitigation: Slow down brute-force attacks
+		// Add a random delay between 500ms and 1500ms
+		jitter, _ := rand.Int(rand.Reader, big.NewInt(1000))
+		time.Sleep(time.Duration(500+jitter.Int64()) * time.Millisecond)
+
 		// Metrics collection
 		if s.server.metricsCollector != nil {
 			s.server.metricsCollector.RecordAuthentication(false, s.user)

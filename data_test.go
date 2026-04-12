@@ -15,10 +15,16 @@ func TestResolveDataAddr(t *testing.T) {
 		wantAddr    string
 	}{
 		{
-			name:        "normal address",
+			name:        "matching address",
+			pasvAddr:    "192.168.1.5:12345",
+			controlHost: "192.168.1.5",
+			wantAddr:    "192.168.1.5:12345",
+		},
+		{
+			name:        "mismatching address (security check)",
 			pasvAddr:    "192.168.1.5:12345",
 			controlHost: "10.0.0.1",
-			wantAddr:    "192.168.1.5:12345",
+			wantAddr:    "10.0.0.1:12345",
 		},
 		{
 			name:        "zero address",
@@ -30,7 +36,7 @@ func TestResolveDataAddr(t *testing.T) {
 			name:        "invalid address",
 			pasvAddr:    "invalid",
 			controlHost: "10.0.0.1",
-			wantAddr:    "invalid", // Or handle error? The split might fail.
+			wantAddr:    "invalid",
 		},
 	}
 

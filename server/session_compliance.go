@@ -112,6 +112,11 @@ func (s *session) handleHELP(arg string) {
 // handleSITE handles the SITE command.
 // Provides server-specific commands (RFC 959).
 func (s *session) handleSITE(arg string) {
+	if !s.isLoggedIn {
+		s.reply(530, "Please login with USER and PASS.")
+		return
+	}
+
 	if arg == "" {
 		s.reply(501, "SITE command requires parameters.")
 		return

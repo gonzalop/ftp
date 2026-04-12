@@ -3,8 +3,21 @@ package server
 import (
 	"bufio"
 	"crypto/tls"
+	"io"
+	"net"
 	"strings"
 )
+
+// prefixedConn wraps a net.Conn and an io.Reader.
+// It reads from the reader until it's exhausted, then falls back to the connection.
+type prefixedConn struct {
+	net.Conn
+	r io.Reader
+}
+
+func (c *prefixedConn) Read(p []byte) (int, error) {
+	return c.r.Read(p)
+}
 
 // handleAUTH handles authentication mechanisms, specifically TLS (RFC 4217).
 func (s *session) handleAUTH(arg string) {
@@ -20,7 +33,17 @@ func (s *session) handleAUTH(arg string) {
 	s.reply(234, "AUTH TLS successful.")
 
 	// Upgrade connection
-	tlsConn := tls.Server(s.conn, s.server.tlsConfig)
+	conn := net.Conn(s.conn)
+	s.mu.Lock()
+	if s.reader.Buffered() > 0 {
+		conn = &prefixedConn{
+			Conn: s.conn,
+			r:    io.MultiReader(io.LimitReader(s.reader, int64(s.reader.Buffered())), s.conn),
+		}
+	}
+	s.mu.Unlock()
+
+	tlsConn := tls.Server(conn, s.server.tlsConfig)
 
 	s.mu.Lock()
 	s.conn = tlsConn

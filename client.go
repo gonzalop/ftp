@@ -400,7 +400,16 @@ func (c *Client) upgradeToTLS() error {
 
 	// Wrap the connection in TLS
 	c.logger.Debug("starting TLS handshake", "mode", "explicit")
-	tlsConn := tls.Client(c.conn, c.tlsConfig)
+
+	conn := net.Conn(c.conn)
+	if c.reader.Buffered() > 0 {
+		conn = &prefixedConn{
+			Conn: c.conn,
+			r:    io.MultiReader(io.LimitReader(c.reader, int64(c.reader.Buffered())), c.conn),
+		}
+	}
+
+	tlsConn := tls.Client(conn, c.tlsConfig)
 
 	// Set deadline for handshake
 	if c.timeout > 0 {

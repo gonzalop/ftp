@@ -101,15 +101,20 @@ func formatPORT(addr string) (string, error) {
 }
 
 // resolveDataAddr resolves the data connection address.
-// If the PASV response contains 0.0.0.0, it replaces it with the control connection host.
+// To prevent FTP bounce attacks, we enforce that the data connection host matches
+// the control connection host, even if the server returns a different IP in the PASV response.
 func resolveDataAddr(pasvAddr, controlHost string) string {
 	host, port, err := net.SplitHostPort(pasvAddr)
 	if err != nil {
-		// If we can't split it, return as is (dialer will likely fail later)
 		return pasvAddr
 	}
 
-	if host == "0.0.0.0" {
+	// If the server returns a different IP than the one we're connected to,
+	// we use the control connection host instead. This is a security measure.
+	// We allow 0.0.0.0 (which is common) and also check if the hosts differ.
+	if host == "0.0.0.0" || host != controlHost {
+		// Special case: if controlHost is a hostname that resolves to the same IP,
+		// we might be being too strict, but for security, using controlHost is always safer.
 		return net.JoinHostPort(controlHost, port)
 	}
 
