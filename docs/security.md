@@ -19,6 +19,7 @@ This guide covers security best practices for both the FTP client and server imp
   - [Access Control](#access-control)
   - [Brute Force Protection](#brute-force-protection)
   - [File System Security](#file-system-security)
+  - [Resource Management & DoS Protection](#resource-management--dos-protection)
   - [Privacy & Compliance](#privacy--compliance)
 - [Network Security](#network-security)
 - [Deployment Checklist](#deployment-checklist)
@@ -546,6 +547,27 @@ driver, _ := server.NewFSDriver("/var/ftp",
     // server.WithAnonWrite(false), // Allow anonymous read-only
 )
 ```
+
+---
+
+### Resource Management & DoS Protection
+
+The library includes several built-in protections against Denial of Service (DoS) and resource exhaustion attacks.
+
+#### Client-Side Protections
+
+To prevent a malicious server from crashing the client via memory exhaustion, the control connection parser enforces the following limits:
+
+- **Max Line Length:** 4096 bytes. Any single response line exceeding this will result in an error.
+- **Max Response Lines:** 1000 lines. Multi-line responses (like `FEAT` or large directory listings) are capped to prevent unbounded memory growth.
+
+#### Server-Side Protections
+
+The server implements limits on potentially expensive operations:
+
+- **Recursive Listing Depth:** `LIST -R` is limited to a recursion depth of 100. This prevents stack overflow or I/O exhaustion from deeply nested directory structures.
+- **HASH Size Limit:** The `HASH` command (used for verifying file integrity) is limited to files up to 250 MB. Requests for larger files will return a `552` error to prevent long-running hash operations from blocking the control connection.
+- **Connection Limits:** Always use `WithMaxConnections(total, perIP)` to prevent connection exhaustion.
 
 ---
 
