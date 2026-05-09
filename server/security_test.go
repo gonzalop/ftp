@@ -3,6 +3,9 @@ package server
 import (
 	"context"
 	"net"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -63,3 +66,55 @@ func TestUnauthenticatedSitePanic(t *testing.T) {
 		t.Errorf("Expected 530 Not logged in, got %d %s", resp.Code, resp.Message)
 	}
 }
+
+func TestHashSizeLimit(t *testing.T) {
+	// 1. Setup
+	rootDir := t.TempDir()
+	largeFile := filepath.Join(rootDir, "large.dat")
+
+	// Create a file larger than 250MB
+	f, err := os.Create(largeFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Use 251MB
+	if err := f.Truncate(251 * 1024 * 1024); err != nil {
+		f.Close()
+		t.Fatal(err)
+	}
+	f.Close()
+
+	driver, _ := NewFSDriver(rootDir, WithAuthenticator(func(u, p, h string, _ net.IP) (string, bool, error) {
+		return rootDir, false, nil
+	}))
+
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr := ln.Addr().String()
+	server, _ := NewServer(addr, WithDriver(driver))
+
+	go func() { _ = server.Serve(ln) }()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = server.Shutdown(ctx)
+	}()
+
+	// 2. Connect and try HASH
+	client, err := ftp.Dial(addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Quit()
+
+	_ = client.Login("user", "pass")
+
+	_, err = client.Hash("large.dat")
+	if err == nil {
+		t.Fatal("expected error for HASH on large file, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "552") {
+		t.Errorf("expected 552 error, got: %v", err)
+	}
+}
+

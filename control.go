@@ -46,6 +46,35 @@ func (r *Response) String() string {
 	return strings.Join(r.Lines, "\n")
 }
 
+const (
+	// maxLineLength is the maximum length of a single response line to prevent OOM
+	maxLineLength = 4096
+
+	// maxResponseLines is the maximum number of lines in a multi-line response
+	maxResponseLines = 1000
+)
+
+// readLineLimited reads a line from the reader up to the specified limit.
+func readLineLimited(r *bufio.Reader, limit int) (string, error) {
+	var line strings.Builder
+	for {
+		b, err := r.ReadByte()
+		if err != nil {
+			// If we read some data before EOF, return it with the error
+			// to allow parsing what we have (though typically this is a failure)
+			return line.String(), err
+		}
+		line.WriteByte(b)
+		if b == '\n' {
+			break
+		}
+		if line.Len() > limit {
+			return "", fmt.Errorf("response line too long (limit %d bytes)", limit)
+		}
+	}
+	return line.String(), nil
+}
+
 // readResponse reads a complete FTP response from the reader.
 // It handles both single-line and multi-line responses.
 //
@@ -59,7 +88,7 @@ func (r *Response) String() string {
 // The response is complete when a line starts with the code followed by a space.
 func readResponse(r *bufio.Reader) (*Response, error) {
 	// Read the first line
-	line, err := r.ReadString('\n')
+	line, err := readLineLimited(r, maxLineLength)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +143,11 @@ func readMultiLine(r *bufio.Reader, code int, lines *[]string) error {
 	codeStr := fmt.Sprintf("%03d", code)
 
 	for {
-		line, err := r.ReadString('\n')
+		if len(*lines) >= maxResponseLines {
+			return fmt.Errorf("too many response lines (limit %d)", maxResponseLines)
+		}
+
+		line, err := readLineLimited(r, maxLineLength)
 		if err != nil {
 			if err == io.EOF && len(*lines) > 0 {
 				return fmt.Errorf("unexpected EOF reading response")

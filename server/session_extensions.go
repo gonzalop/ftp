@@ -15,6 +15,8 @@ func (s *session) handleHOST(arg string) {
 	s.reply(220, "Host accepted.")
 }
 
+const maxHashSize = 250 * 1024 * 1024 // 250 MB
+
 func (s *session) handleHASH(arg string) {
 	if !s.isLoggedIn {
 		s.reply(530, "Not logged in.")
@@ -22,6 +24,19 @@ func (s *session) handleHASH(arg string) {
 	}
 
 	path := arg
+
+	// Security: check file size before hashing to prevent DoS
+	info, err := s.fs.GetFileInfo(path)
+	if err != nil {
+		s.replyError(err)
+		return
+	}
+
+	if info.Size() > maxHashSize {
+		s.reply(552, fmt.Sprintf("File too large for HASH command (limit %d MB).", maxHashSize/(1024*1024)))
+		return
+	}
+
 	// Use selected hash algorithm
 	hash, err := s.fs.GetHash(path, s.selectedHash)
 	if err != nil {

@@ -95,7 +95,7 @@ func (s *session) handleLIST(arg string) {
 	s.reply(150, "Here comes the directory listing.")
 
 	if recursive {
-		err = s.listRecursive(conn, path)
+		err = s.listRecursive(conn, path, 0)
 	} else {
 		entries, listErr := s.fs.ListDir(path)
 		if listErr != nil {
@@ -133,19 +133,18 @@ func (s *session) handleLIST(arg string) {
 	s.reply(226, "Directory send OK.")
 }
 
-func (s *session) listRecursive(w io.Writer, path string) error {
+const maxListDepth = 100
+
+func (s *session) listRecursive(w io.Writer, path string, depth int) error {
+	if depth > maxListDepth {
+		return nil // Stop recursing
+	}
+
 	// 1. List current dir
 	entries, err := s.fs.ListDir(path)
 	if err != nil {
 		return err
 	}
-
-	// Print current dir header if we are deep? Standard ls -R style:
-	// .:
-	// ...
-	//
-	// ./subdir:
-	// ...
 
 	// Helper to print entries
 	for _, entry := range entries {
@@ -170,7 +169,7 @@ func (s *session) listRecursive(w io.Writer, path string) error {
 			fmt.Fprintf(w, "\r\n%s:\r\n", subPath)
 
 			// Recurse (ignoring errors for subdirs to keep going)
-			_ = s.listRecursive(w, subPath)
+			_ = s.listRecursive(w, subPath, depth+1)
 		}
 	}
 

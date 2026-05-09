@@ -213,8 +213,13 @@ func (c *Client) startKeepAlive() {
 					if c.logger != nil {
 						c.logger.Debug("sending keep-alive NOOP")
 					}
-					// Ignore errors (connection might be closed)
-					_ = c.Noop()
+					// Exit goroutine if NOOP fails (indicates broken connection)
+					if err := c.Noop(); err != nil {
+						if c.logger != nil {
+							c.logger.Debug("keep-alive failed, exiting goroutine", "err", err)
+						}
+						return
+					}
 				}
 			case <-c.quitChan:
 				return
