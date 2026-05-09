@@ -166,7 +166,15 @@
 //	    server.WithMaxIdleTime(10*time.Minute),   // Idle timeout
 //	)
 //
-// Custom logging:
+// # Resource Management
+//
+// The server includes built-in protections against resource exhaustion:
+//
+//   - Recursive Listing Depth: LIST -R is limited to a depth of 100.
+//   - HASH Command Size: Files larger than 250 MB are rejected by the HASH command.
+//   - Control Channel Limits: Commands are limited in length to prevent buffer exhaustion.
+//
+// # Custom logging:
 //
 //	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 //	    Level: slog.LevelDebug,

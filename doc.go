@@ -129,6 +129,17 @@
 // from closing idle connections. This is useful for long-running operations
 // or when keeping a connection open for extended periods.
 //
+// # Resource Management
+//
+// To protect against resource exhaustion and Denial of Service (DoS) from
+// malicious servers, the client enforces the following limits on the
+// control connection:
+//   - Max Response Line Length: 4096 bytes
+//   - Max Response Line Count: 1000 lines
+//
+// These limits apply to all responses read from the server, including initial
+// greetings, feature listings (FEAT), and directory listings.
+//
 // # Custom Listing Parsers
 //
 // If you encounter a server with a non-standard LIST format, you can implement

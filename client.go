@@ -716,6 +716,9 @@ func (c *Client) Abort() error {
 // The algorithm used is determined by the server's default or the last
 // algorithm selected via SetHashAlgo.
 //
+// Note: Some servers may enforce a maximum file size for the HASH command
+// to prevent resource exhaustion.
+//
 // Example:
 //
 //	hash, err := client.Hash("file.iso")

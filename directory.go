@@ -158,6 +158,10 @@ type Entry struct {
 //	        fmt.Printf("  -> %s\n", entry.Target)
 //	    }
 //	}
+// List retrieves a listing of the files and directories in the given path.
+//
+// Note: If the path or arguments include flags for recursive listing (e.g., "-R"),
+// the server may enforce a maximum recursion depth to prevent resource exhaustion.
 func (c *Client) List(path string) ([]*Entry, error) {
 	// Open data connection and send LIST command
 	var dataConn net.Conn
