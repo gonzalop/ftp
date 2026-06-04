@@ -7,7 +7,7 @@ replace github.com/gonzalop/ftp => ../..
 
 require (
 	github.com/gonzalop/ftp v0.0.0-00010101000000-000000000000
-	github.com/quic-go/quic-go v0.59.0
+	github.com/quic-go/quic-go v0.59.1
 )
 
 require (
