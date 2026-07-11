@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: ['1.25']
+        go-version: [ '1.25', '1.26' ]
 
     steps:
     - name: Checkout code
@@ -41,6 +41,7 @@ jobs:
         file: ./coverage.txt
         flags: unittests
         name: codecov-umbrella
+        token: ${{ secrets.CODECOV_TOKEN }}
       continue-on-error: true
 
 
