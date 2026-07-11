@@ -118,3 +118,48 @@ func TestHashSizeLimit(t *testing.T) {
 	}
 }
 
+func TestPassiveHijack(t *testing.T) {
+	// 1. Setup server
+	rootDir := t.TempDir()
+	driver, _ := NewFSDriver(rootDir, WithAuthenticator(func(u, p, h string, _ net.IP) (string, bool, error) {
+		return rootDir, false, nil
+	}))
+
+	srv, _ := NewServer("127.0.0.1:0", WithDriver(driver))
+
+	passiveAddr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pasvList, err := net.ListenTCP("tcp", passiveAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pasvList.Close()
+
+	s := &session{
+		server:    srv,
+		pasvList:  pasvList,
+		remoteIP:  "8.8.8.8", // dummy IP different from 127.0.0.1
+	}
+
+	// In a separate goroutine, dial the passive port (which will connect from 127.0.0.1)
+	go func() {
+		conn, err := net.Dial("tcp", pasvList.Addr().String())
+		if err == nil {
+			conn.Close()
+		}
+	}()
+
+	_, err = s.connPassive()
+	if err == nil {
+		t.Fatal("expected passive connection to be rejected due to IP mismatch, got nil error")
+	}
+	if !strings.Contains(err.Error(), "security violation") {
+		t.Errorf("expected security violation error, got: %v", err)
+	}
+}
+
+
+
+

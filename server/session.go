@@ -563,6 +563,24 @@ func (s *session) connPassive() (net.Conn, error) {
 	s.pasvList.Close()
 	s.pasvList = nil
 
+	// Verify that the data connection remote IP matches the control connection remote IP to prevent hijacking.
+	// We allow loopback addresses to differ (e.g. 127.0.0.1 and ::1) since they are both local to the host.
+	dataIPStr, _, errSplit := net.SplitHostPort(conn.RemoteAddr().String())
+	if errSplit != nil {
+		dataIPStr = conn.RemoteAddr().String()
+	}
+	dataIP := net.ParseIP(dataIPStr)
+	controlIP := net.ParseIP(s.remoteIP)
+	if dataIP != nil && controlIP != nil {
+		if !dataIP.Equal(controlIP) && !(dataIP.IsLoopback() && controlIP.IsLoopback()) {
+			conn.Close()
+			return nil, fmt.Errorf("security violation: data connection IP %s does not match control connection IP %s", dataIPStr, s.remoteIP)
+		}
+	} else if dataIPStr != s.remoteIP {
+		conn.Close()
+		return nil, fmt.Errorf("security violation: data connection IP %s does not match control connection IP %s", dataIPStr, s.remoteIP)
+	}
+
 	return s.wrapDataConn(conn)
 }
 
