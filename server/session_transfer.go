@@ -690,6 +690,10 @@ func (s *session) handleEPRT(arg string) {
 }
 
 func (s *session) handleREST(arg string) {
+	if !s.isLoggedIn {
+		s.reply(530, "Please login with USER and PASS.")
+		return
+	}
 	offset, err := strconv.ParseInt(arg, 10, 64)
 	if err != nil {
 		s.reply(501, "Invalid offset.")

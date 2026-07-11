@@ -16,6 +16,10 @@ func (s *session) handleACCT(_ string) {
 // handleMODE handles the MODE command.
 // RFC 1123 requires Stream mode support.
 func (s *session) handleMODE(arg string) {
+	if !s.isLoggedIn {
+		s.reply(530, "Please login with USER and PASS.")
+		return
+	}
 	mode := strings.ToUpper(strings.TrimSpace(arg))
 	switch mode {
 	case "S":
@@ -33,6 +37,10 @@ func (s *session) handleMODE(arg string) {
 // handleSTRU handles the STRU command.
 // RFC 1123 requires File structure support.
 func (s *session) handleSTRU(arg string) {
+	if !s.isLoggedIn {
+		s.reply(530, "Please login with USER and PASS.")
+		return
+	}
 	stru := strings.ToUpper(strings.TrimSpace(arg))
 	switch stru {
 	case "F":
@@ -50,6 +58,10 @@ func (s *session) handleSTRU(arg string) {
 // handleSYST handles the SYST command.
 // Returns the system type from server configuration.
 func (s *session) handleSYST(_ string) {
+	if !s.isLoggedIn {
+		s.reply(530, "Please login with USER and PASS.")
+		return
+	}
 	s.reply(215, s.server.serverName)
 }
 

@@ -160,6 +160,55 @@ func TestPassiveHijack(t *testing.T) {
 	}
 }
 
+func TestUnauthenticatedCommands(t *testing.T) {
+	t.Parallel()
+	rootDir := t.TempDir()
+	driver, _ := NewFSDriver(rootDir, WithAuthenticator(func(u, p, h string, _ net.IP) (string, bool, error) {
+		return rootDir, false, nil
+	}))
+
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr := ln.Addr().String()
+	srv, _ := NewServer(addr, WithDriver(driver))
+
+	go func() { _ = srv.Serve(ln) }()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+	}()
+
+	client, err := ftp.Dial(addr, ftp.WithTimeout(2*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Quit()
+
+	// DO NOT LOGIN
+
+	unauthCmds := []struct {
+		cmd  string
+		args []string
+	}{
+		{"REST", []string{"100"}},
+		{"MODE", []string{"S"}},
+		{"STRU", []string{"F"}},
+		{"SYST", nil},
+	}
+
+	for _, tc := range unauthCmds {
+		resp, err := client.Quote(tc.cmd, tc.args...)
+		if err != nil {
+			t.Errorf("Quote %s failed: %v", tc.cmd, err)
+			continue
+		}
+		if resp.Code != 530 {
+			t.Errorf("Expected 530 for unauthenticated %s, got %d %s", tc.cmd, resp.Code, resp.Message)
+		}
+	}
+}
+
+
 
 
 
