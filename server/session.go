@@ -231,7 +231,7 @@ func newSession(server *Server, conn net.Conn) *session {
 		prot:         "C", // Default to clear
 		selectedHash: "SHA-256",
 		transferType: "I",
-		cmdReqChan:   make(chan struct{}),
+		cmdReqChan:   make(chan struct{}, 1),
 	}
 
 	// Detect Implicit TLS (connection is already a *tls.Conn)
@@ -335,7 +335,7 @@ func (s *session) serve() {
 
 		select {
 		case s.cmdReqChan <- struct{}{}:
-		case <-time.After(1 * time.Second):
+		default:
 		}
 	}
 }
