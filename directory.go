@@ -79,10 +79,22 @@ func (c *Client) Walk(root string, walkFn WalkFunc) error {
 		}
 	}
 
-	return c.walk(cleanRoot, rootEntry, walkFn)
+	visited := make(map[string]bool)
+	return c.walk(cleanRoot, rootEntry, visited, 0, walkFn)
 }
 
-func (c *Client) walk(pathStr string, info *Entry, walkFn WalkFunc) error {
+func (c *Client) walk(pathStr string, info *Entry, visited map[string]bool, depth int, walkFn WalkFunc) error {
+	if depth > 100 {
+		return fmt.Errorf("security violation: maximum directory walk depth exceeded (depth limit 100)")
+	}
+
+	cleanPath := path.Clean(pathStr)
+	if visited[cleanPath] {
+		return fmt.Errorf("security violation: directory walk loop detected at %q", cleanPath)
+	}
+	visited[cleanPath] = true
+	defer delete(visited, cleanPath)
+
 	err := walkFn(pathStr, info, nil)
 	if err != nil {
 		if info != nil && info.Type == "dir" && err == SkipDir {
@@ -109,7 +121,7 @@ func (c *Client) walk(pathStr string, info *Entry, walkFn WalkFunc) error {
 		}
 
 		fullPath := path.Join(pathStr, entry.Name)
-		if err := c.walk(fullPath, entry, walkFn); err != nil {
+		if err := c.walk(fullPath, entry, visited, depth+1, walkFn); err != nil {
 			if err == SkipDir {
 				// Skip directory requested by one of the children?
 				// No, SkipDir from child only skips that child directory.
