@@ -28,4 +28,3 @@ func (c *deadlineConn) Write(b []byte) (n int, err error) {
 	}
 	return c.Conn.Write(b)
 }
-

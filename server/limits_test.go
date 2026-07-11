@@ -297,4 +297,3 @@ func TestPassiveTimeout(t *testing.T) {
 		t.Fatal("expected connection to passive port to fail after timeout, but it succeeded")
 	}
 }
-

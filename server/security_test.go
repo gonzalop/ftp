@@ -138,9 +138,9 @@ func TestPassiveHijack(t *testing.T) {
 	defer pasvList.Close()
 
 	s := &session{
-		server:    srv,
-		pasvList:  pasvList,
-		remoteIP:  "8.8.8.8", // dummy IP different from 127.0.0.1
+		server:   srv,
+		pasvList: pasvList,
+		remoteIP: "8.8.8.8", // dummy IP different from 127.0.0.1
 	}
 
 	// In a separate goroutine, dial the passive port (which will connect from 127.0.0.1)
@@ -207,8 +207,3 @@ func TestUnauthenticatedCommands(t *testing.T) {
 		}
 	}
 }
-
-
-
-
-

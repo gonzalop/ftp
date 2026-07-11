@@ -90,7 +90,7 @@ func TestDownloadDir_Traversal(t *testing.T) {
 	}
 
 	tempDir := t.TempDir()
-	
+
 	// DownloadDir with root "" should attempt to download the current directory.
 	// The malicious listing contains "../../../traversal.txt".
 	// Without path traversal protection, it would write to tempDir/../traversal.txt.
@@ -158,7 +158,7 @@ func TestWalk_LoopPrevention(t *testing.T) {
 
 	// Walk should return an error when maximum depth or infinite loop is detected,
 	// rather than stack overflowing and crashing.
-	err = c.Walk(".", func(path string, info *Entry, err error) error {
+	err = c.Walk(".", func(_ string, _ *Entry, _ error) error {
 		return nil
 	})
 
@@ -169,5 +169,3 @@ func TestWalk_LoopPrevention(t *testing.T) {
 		t.Errorf("expected security violation or depth exceeded error, got: %v", err)
 	}
 }
-
-

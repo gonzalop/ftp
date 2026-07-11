@@ -170,6 +170,7 @@ type Entry struct {
 //	        fmt.Printf("  -> %s\n", entry.Target)
 //	    }
 //	}
+//
 // List retrieves a listing of the files and directories in the given path.
 //
 // Note: If the path or arguments include flags for recursive listing (e.g., "-R"),
