@@ -510,16 +510,31 @@ func (s *session) handlePASV(_ string) {
 		return
 	}
 
+	s.mu.Lock()
 	if s.pasvList != nil {
 		s.pasvList.Close()
 	}
+	s.mu.Unlock()
 
 	ln, err := s.listenPassive()
 	if err != nil {
 		s.reply(425, "Can't open passive connection.")
 		return
 	}
+	s.mu.Lock()
 	s.pasvList = ln
+	s.mu.Unlock()
+
+	// Spawn a timer goroutine to close the listener after passiveTimeout to prevent resource exhaustion
+	go func(ln net.Listener) {
+		time.Sleep(s.server.passiveTimeout)
+		s.mu.Lock()
+		if s.pasvList == ln {
+			s.pasvList = nil
+			ln.Close()
+		}
+		s.mu.Unlock()
+	}(ln)
 
 	_, portStr, _ := net.SplitHostPort(ln.Addr().String())
 	port, _ := strconv.Atoi(portStr)
@@ -580,16 +595,31 @@ func (s *session) handleEPSV(_ string) {
 		return
 	}
 
+	s.mu.Lock()
 	if s.pasvList != nil {
 		s.pasvList.Close()
 	}
+	s.mu.Unlock()
 
 	ln, err := s.listenPassive()
 	if err != nil {
 		s.reply(425, "Can't open passive connection.")
 		return
 	}
+	s.mu.Lock()
 	s.pasvList = ln
+	s.mu.Unlock()
+
+	// Spawn a timer goroutine to close the listener after passiveTimeout to prevent resource exhaustion
+	go func(ln net.Listener) {
+		time.Sleep(s.server.passiveTimeout)
+		s.mu.Lock()
+		if s.pasvList == ln {
+			s.pasvList = nil
+			ln.Close()
+		}
+		s.mu.Unlock()
+	}(ln)
 
 	_, portStr, _ := net.SplitHostPort(ln.Addr().String())
 	s.reply(229, fmt.Sprintf("Entering Extended Passive Mode (|||%s|)", portStr))

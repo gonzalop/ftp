@@ -242,3 +242,59 @@ func TestMaxCommandLength(t *testing.T) {
 		t.Error("Expected connection to be closed after oversized command, but it remains open")
 	}
 }
+
+func TestPassiveTimeout(t *testing.T) {
+	t.Parallel()
+	rootDir := t.TempDir()
+	driver, _ := NewFSDriver(rootDir, WithAuthenticator(func(u, p, h string, _ net.IP) (string, bool, error) {
+		return rootDir, false, nil
+	}))
+
+	srv, _ := NewServer("127.0.0.1:0", WithDriver(driver))
+	srv.passiveTimeout = 1 * time.Second
+
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	go func() { _ = srv.Serve(ln) }()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+	}()
+
+	client, err := ftp.Dial(ln.Addr().String(), ftp.WithTimeout(1*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Quit()
+
+	_ = client.Login("user", "pass")
+
+	// Enter passive mode
+	resp, err := client.Quote("EPSV")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Parse EPSV response: 229 Entering Extended Passive Mode (|||port|)
+	msg := resp.Message
+	start := strings.Index(msg, "|||")
+	if start == -1 {
+		t.Fatalf("unexpected EPSV response: %s", msg)
+	}
+	end := strings.Index(msg[start+3:], "|")
+	if end == -1 {
+		t.Fatalf("unexpected EPSV response: %s", msg)
+	}
+	portStr := msg[start+3 : start+3+end]
+
+	// Wait 2 seconds (passive timeout is 1 second)
+	time.Sleep(2 * time.Second)
+
+	// Trying to connect to the passive port should now fail/timeout or be refused
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", portStr), 500*time.Millisecond)
+	if err == nil {
+		conn.Close()
+		t.Fatal("expected connection to passive port to fail after timeout, but it succeeded")
+	}
+}
+

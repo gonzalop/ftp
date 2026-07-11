@@ -128,6 +128,9 @@ type Server struct {
 	// Transport abstraction
 	listenerFactory  ListenerFactory // For passive mode data connections
 	disabledCommands map[string]bool // Commands to disable (e.g., PORT, EPRT)
+
+	// passiveTimeout is the idle timeout for passive data connection listeners.
+	passiveTimeout time.Duration
 }
 
 // transferBufferPool is a pool of byte slices used for data transfers to reduce allocations.
@@ -214,6 +217,7 @@ func NewServer(addr string, options ...Option) (*Server, error) {
 		conns:           make(map[net.Conn]struct{}),
 		connsByIP:       make(map[string]int32),
 		listenerFactory: &DefaultListenerFactory{},
+		passiveTimeout:  15 * time.Second,
 	}
 
 	// Apply options

@@ -74,7 +74,10 @@ func (s *session) handleSTAT(arg string) {
 
 	fmt.Fprintf(s.writer, " TYPE: ASCII, FORM: Nonprint; STRUcture: File; transfer MODE: Stream\r\n")
 
-	if s.pasvList != nil {
+	s.mu.Lock()
+	hasPasv := s.pasvList != nil
+	s.mu.Unlock()
+	if hasPasv {
 		fmt.Fprintf(s.writer, " Passive mode enabled\r\n")
 	} else if s.activeIP != "" {
 		fmt.Fprintf(s.writer, " Active mode: %s:%d\r\n", s.activeIP, s.activePort)

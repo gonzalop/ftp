@@ -425,9 +425,12 @@ func (s *session) close() {
 	if s.fs != nil {
 		s.fs.Close()
 	}
+	s.mu.Lock()
 	if s.pasvList != nil {
 		s.pasvList.Close()
+		s.pasvList = nil
 	}
+	s.mu.Unlock()
 	if s.dataConn != nil {
 		s.dataConn.Close()
 	}
@@ -536,7 +539,11 @@ func (s *session) handleCommand(line string) {
 }
 
 func (s *session) connData() (net.Conn, error) {
-	if s.pasvList != nil {
+	s.mu.Lock()
+	hasPasv := s.pasvList != nil
+	s.mu.Unlock()
+
+	if hasPasv {
 		return s.connPassive()
 	}
 
@@ -552,16 +559,29 @@ func (s *session) connPassive() (net.Conn, error) {
 		"session_id", s.sessionID,
 		"remote_ip", s.redactIP(s.remoteIP),
 	)
+	s.mu.Lock()
+	ln := s.pasvList
+	s.mu.Unlock()
+
+	if ln == nil {
+		return nil, fmt.Errorf("no passive listener")
+	}
+
 	// Set a deadline for the client to connect
-	if t, ok := s.pasvList.(*net.TCPListener); ok {
+	if t, ok := ln.(*net.TCPListener); ok {
 		_ = t.SetDeadline(time.Now().Add(10 * time.Second))
 	}
-	conn, err := s.pasvList.Accept()
+	conn, err := ln.Accept()
 	if err != nil {
 		return nil, err
 	}
-	s.pasvList.Close()
-	s.pasvList = nil
+
+	s.mu.Lock()
+	if s.pasvList == ln {
+		s.pasvList = nil
+	}
+	s.mu.Unlock()
+	ln.Close()
 
 	// Verify that the data connection remote IP matches the control connection remote IP to prevent hijacking.
 	// We allow loopback addresses to differ (e.g. 127.0.0.1 and ::1) since they are both local to the host.
