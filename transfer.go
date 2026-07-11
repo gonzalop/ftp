@@ -437,6 +437,14 @@ func (c *Client) DownloadDir(remoteDir, localDir string) error {
 
 		localPath := filepath.Join(localDir, filepath.FromSlash(relPath))
 
+		// Prevent directory traversal attacks
+		cleanLocalDir := filepath.Clean(localDir)
+		cleanLocalPath := filepath.Clean(localPath)
+		rel, err := filepath.Rel(cleanLocalDir, cleanLocalPath)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			return fmt.Errorf("security violation: path %q escapes local destination directory %q", pathStr, localDir)
+		}
+
 		if info.Type == "dir" {
 			// Create local directory
 			if err := os.MkdirAll(localPath, 0755); err != nil {

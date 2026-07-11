@@ -2,8 +2,14 @@ package ftp
 
 import (
 	"bufio"
+	"fmt"
+	"net"
+	"net/textproto"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestReadResponse_Limits(t *testing.T) {
@@ -37,3 +43,69 @@ func TestReadResponse_Limits(t *testing.T) {
 		}
 	})
 }
+
+func TestDownloadDir_Traversal(t *testing.T) {
+	t.Parallel()
+	ms := newMockServer(t)
+
+	// Setup EPSV listener
+	epsvL, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms.dataListener = epsvL
+
+	_, portStr, _ := net.SplitHostPort(epsvL.Addr().String())
+	epsvResp := fmt.Sprintf("229 Entering Extended Passive Mode (|||%s|)", portStr)
+
+	ms.handlers["EPSV"] = func(c *textproto.Conn, _ string) {
+		_ = c.PrintfLine("%s", epsvResp)
+	}
+
+	ms.handlers["LIST"] = func(c *textproto.Conn, _ string) {
+		_ = c.PrintfLine("150 File status okay.")
+		dconn, err := ms.dataListener.Accept()
+		if err != nil {
+			t.Errorf("Mock server failed to accept data conn: %v", err)
+			return
+		}
+		defer dconn.Close()
+
+		// Send a malicious entry that attempts to traverse up and escape the target local directory
+		fmt.Fprintf(dconn, "-rw-r--r-- 1 owner group 4 Jan 01 12:00 ../../../traversal.txt\r\n")
+		_ = c.PrintfLine("226 Closing data connection.")
+	}
+
+	ms.start()
+	defer ms.stop()
+
+	c, err := Dial(ms.addr, WithTimeout(2*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Quit() }()
+
+	if err := c.Login("anonymous", "anonymous"); err != nil {
+		t.Fatal(err)
+	}
+
+	tempDir := t.TempDir()
+	
+	// DownloadDir with root "" should attempt to download the current directory.
+	// The malicious listing contains "../../../traversal.txt".
+	// Without path traversal protection, it would write to tempDir/../traversal.txt.
+	err = c.DownloadDir("", tempDir)
+	if err == nil {
+		t.Error("expected error due to path traversal, got nil")
+	} else if !strings.Contains(err.Error(), "path traversal") && !strings.Contains(err.Error(), "security violation") {
+		t.Errorf("expected path traversal / security violation error, got: %v", err)
+	}
+
+	// Verify that the file was NOT created outside tempDir
+	traversalFile := filepath.Join(filepath.Dir(tempDir), "traversal.txt")
+	if _, err := os.Stat(traversalFile); !os.IsNotExist(err) {
+		t.Errorf("security check failed: traversal file was created at %s", traversalFile)
+		_ = os.Remove(traversalFile) // Clean up if created
+	}
+}
+
