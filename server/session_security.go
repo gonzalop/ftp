@@ -6,18 +6,9 @@ import (
 	"io"
 	"net"
 	"strings"
+
+	"github.com/gonzalop/ftp/internal/sharedconn"
 )
-
-// prefixedConn wraps a net.Conn and an io.Reader.
-// It reads from the reader until it's exhausted, then falls back to the connection.
-type prefixedConn struct {
-	net.Conn
-	r io.Reader
-}
-
-func (c *prefixedConn) Read(p []byte) (int, error) {
-	return c.r.Read(p)
-}
 
 // handleAUTH handles authentication mechanisms, specifically TLS (RFC 4217).
 func (s *session) handleAUTH(arg string) {
@@ -36,9 +27,9 @@ func (s *session) handleAUTH(arg string) {
 	conn := net.Conn(s.conn)
 	s.mu.Lock()
 	if s.reader.Buffered() > 0 {
-		conn = &prefixedConn{
+		conn = &sharedconn.PrefixedConn{
 			Conn: s.conn,
-			r:    io.MultiReader(io.LimitReader(s.reader, int64(s.reader.Buffered())), s.conn),
+			R:    io.MultiReader(io.LimitReader(s.reader, int64(s.reader.Buffered())), s.conn),
 		}
 	}
 	s.mu.Unlock()

@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/gonzalop/ftp/internal/sharedconn"
 )
 
 // Dialer is an interface for establishing data connections.
@@ -408,9 +410,9 @@ func (c *Client) upgradeToTLS() error {
 
 	conn := net.Conn(c.conn)
 	if c.reader.Buffered() > 0 {
-		conn = &prefixedConn{
+		conn = &sharedconn.PrefixedConn{
 			Conn: c.conn,
-			r:    io.MultiReader(io.LimitReader(c.reader, int64(c.reader.Buffered())), c.conn),
+			R:    io.MultiReader(io.LimitReader(c.reader, int64(c.reader.Buffered())), c.conn),
 		}
 	}
 
