@@ -526,8 +526,13 @@ func (c *trackingConn) Close() error {
 
 // handleSession handles a new client connection.
 func (s *Server) handleSession(conn net.Conn) {
+	// Count this connection before checking the global limit, so that
+	// connections arriving at the same moment cannot all pass the check.
+	n := s.activeConns.Add(1)
+	defer s.activeConns.Add(-1)
+
 	// Check global connection limit
-	if s.maxConnections > 0 && s.activeConns.Load() >= int32(s.maxConnections) {
+	if s.maxConnections > 0 && n > int32(s.maxConnections) {
 		// Security audit: connection limit reached
 		remoteAddr := conn.RemoteAddr().String()
 		ip, _, _ := net.SplitHostPort(remoteAddr)
@@ -576,9 +581,6 @@ func (s *Server) handleSession(conn net.Conn) {
 		}
 		s.connsByIPMu.Unlock()
 	}
-
-	s.activeConns.Add(1)
-	defer s.activeConns.Add(-1)
 
 	// Metrics collection: connection accepted
 	if s.metricsCollector != nil {
