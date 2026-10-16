@@ -697,19 +697,23 @@ func (c *Client) Quote(command string, args ...string) (*Response, error) {
 	return c.sendCommand(command, args...)
 }
 
-// Abort cancels an active file transfer.
-// It sends the ABOR command to the server if there's an ongoing transfer.
+// Abort cancels an active file transfer by closing its data connection.
+// The transfer call (Retrieve, Store, ...) then returns an error after
+// reading the server's reply. For uploads, the server may keep the part of
+// the file it already received.
+//
+// ABOR is not sent: its reply and the transfer's reply would arrive in an
+// order that differs between servers, and the transfer goroutine is already
+// waiting for the transfer's reply.
 func (c *Client) Abort() error {
 	c.mu.Lock()
-	hasTransfer := c.activeDataConn != nil
-	c.mu.Unlock()
+	defer c.mu.Unlock()
 
-	if !hasTransfer {
+	if c.activeDataConn == nil {
 		return fmt.Errorf("(local) No transfer in progress")
 	}
 
-	_, err := c.expect2xx("ABOR")
-	return err
+	return c.activeDataConn.Close()
 }
 
 // Hash requests the hash of a file from the server using the HASH command.

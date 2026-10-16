@@ -2107,3 +2107,64 @@ func ExampleClient_SetOption() {
 		}
 	}
 }
+
+func TestClient_Abort(t *testing.T) {
+	rootDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(rootDir, "big.bin"), make([]byte, 4*1024*1024), 0644); err != nil {
+		t.Fatal(err)
+	}
+	driver, err := server.NewFSDriver(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Slow the server down so the transfer is still running when we abort.
+	s, err := server.NewServer("127.0.0.1:0", server.WithDriver(driver), server.WithBandwidthLimit(0, 512*1024))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln, err := SystemListener()
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = s.Serve(ln) }()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = s.Shutdown(ctx)
+	}()
+
+	c, err := ftp.Dial(ln.Addr().String(), ftp.WithTimeout(5*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Quit() }()
+	if err := c.Login("ftp", "x"); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- c.Retrieve("big.bin", io.Discard) }()
+
+	// Abort reports an error until the transfer has started.
+	deadline := time.Now().Add(3 * time.Second)
+	for c.Abort() != nil {
+		if time.Now().After(deadline) {
+			t.Fatal("transfer never started")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("Retrieve succeeded after Abort")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Retrieve did not return after Abort")
+	}
+
+	// The control connection must still be in sync.
+	if err := c.Noop(); err != nil {
+		t.Fatalf("NOOP after Abort: %v", err)
+	}
+}

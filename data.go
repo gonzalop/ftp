@@ -3,6 +3,7 @@ package ftp
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"regexp"
@@ -481,10 +482,19 @@ func (c *Client) cmdDataConnFrom(cmd string, args ...string) (*Response, net.Con
 // finishDataConn closes the data connection and reads the final response.
 // This should be called after the data transfer is complete.
 func (c *Client) finishDataConn(dataConn net.Conn) error {
-	// Close the data connection
-	if err := dataConn.Close(); err != nil {
-		return fmt.Errorf("failed to close data connection: %w", err)
+	// Close the data connection. Abort may already have closed it.
+	closeErr := dataConn.Close()
+	if errors.Is(closeErr, net.ErrClosed) {
+		closeErr = nil
 	}
+
+	// Hold c.mu while reading, so the reply cannot be taken by a concurrent
+	// command such as the keep-alive NOOP.
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Mark transfer as complete
+	c.activeDataConn = nil
 
 	// Set read deadline for the final response
 	if c.timeout > 0 {
@@ -503,17 +513,16 @@ func (c *Client) finishDataConn(dataConn net.Conn) error {
 		c.logger.Debug("ftp data transfer complete", "code", resp.Code, "message", resp.Message)
 	}
 
-	// Mark transfer as complete
-	c.mu.Lock()
-	c.activeDataConn = nil
-	c.mu.Unlock()
-
 	if !resp.Is2xx() {
 		return &ProtocolError{
 			Command:  "DATA_TRANSFER",
 			Response: resp.Message,
 			Code:     resp.Code,
 		}
+	}
+
+	if closeErr != nil {
+		return fmt.Errorf("failed to close data connection: %w", closeErr)
 	}
 
 	return nil

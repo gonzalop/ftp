@@ -44,7 +44,7 @@ This library implements **comprehensive support** for the following RFC 5797 FEA
 | **USER** | User Name | ✅ `Login()` |
 | **NOOP** | No-Op | ✅ `Noop()` |
 | **PORT** | Data Port | ✅ `WithActiveMode()` |
-| ABOR | Abort | ✅ `Abort()` |
+| ABOR | Abort | ⚠️ `Abort()` closes the data connection instead of sending ABOR |
 | ACCT | Account | ❌ Obsolete auth method |
 | ALLO | Allocate | ❌ Automatic on modern systems |
 | CDUP | Change to Parent Directory | ✅ `ChangeDirToParent()` |

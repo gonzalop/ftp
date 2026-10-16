@@ -278,6 +278,8 @@ fmt.Printf("Remote system: %s\n", sys)
 err := client.Abort()
 ```
 
+`Abort()` closes the data connection instead of sending `ABOR`; the transfer call then returns an error. For uploads, the server may keep the part of the file it already received.
+
 Note: Calling `Quit()` will also actively abort any in-progress transfer by closing the data connection before the control connection.
 
 ### Raw Commands (Quote)
