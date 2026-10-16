@@ -598,3 +598,34 @@ func TestABORKeepsSessionAlive(t *testing.T) {
 		t.Fatalf("NOOP after ABOR: got %q, want 200", r)
 	}
 }
+
+func TestRESTDoesNotLeakPastAPPE(t *testing.T) {
+	t.Parallel()
+	rootDir := t.TempDir()
+	fatalIfErr(t, os.WriteFile(filepath.Join(rootDir, "f.txt"), []byte("0123"), 0644), "write file")
+	driver, err := NewFSDriver(rootDir, WithAuthenticator(func(_, _, _ string, _ net.IP) (string, bool, error) {
+		return rootDir, false, nil
+	}))
+	fatalIfErr(t, err, "NewFSDriver")
+	_, addr := startRawServer(t, driver)
+	c := dialRaw(t, addr)
+	c.cmd("USER u")
+	c.cmd("PASS p")
+
+	// REST applies to the next transfer command only; APPE ignores it.
+	c.cmd("REST 2")
+	dc := c.epsv()
+	c.cmd("APPE f.txt")
+	_, _ = dc.Write([]byte("45"))
+	dc.Close()
+	c.reply()
+
+	dc = c.epsv()
+	c.cmd("RETR f.txt")
+	data, err := io.ReadAll(dc)
+	fatalIfErr(t, err, "read data")
+	c.reply()
+	if string(data) != "012345" {
+		t.Errorf("RETR after REST+APPE: got %q, want %q", data, "012345")
+	}
+}

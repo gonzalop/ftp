@@ -31,6 +31,28 @@ func (s *session) endTransfer() {
 	s.transferCancel = nil
 }
 
+// restartFile applies and clears the REST offset on file. On failure it
+// closes file, replies, and returns false.
+func (s *session) restartFile(file io.ReadWriteCloser) bool {
+	offset := s.restartOffset
+	s.restartOffset = 0 // Reset offset after use
+	if offset <= 0 {
+		return true
+	}
+	seeker, ok := file.(io.Seeker)
+	if !ok {
+		file.Close()
+		s.reply(550, "Resume not supported for this file.")
+		return false
+	}
+	if _, err := seeker.Seek(offset, io.SeekStart); err != nil {
+		file.Close()
+		s.replyError(err)
+		return false
+	}
+	return true
+}
+
 func (s *session) handleRETR(path string) {
 	if !s.isLoggedIn {
 		s.reply(530, "Not logged in.")
@@ -43,29 +65,86 @@ func (s *session) handleRETR(path string) {
 		return
 	}
 
-	if s.restartOffset > 0 {
-		if seeker, ok := file.(io.Seeker); ok {
-			_, err := seeker.Seek(s.restartOffset, io.SeekStart)
-			if err != nil {
-				file.Close()
-				s.replyError(err)
-				return
-			}
-		} else {
-			file.Close()
-			s.reply(550, "Resume not supported for this file.")
-			s.restartOffset = 0
-			return
-		}
+	offset := s.restartOffset
+	if !s.restartFile(file) {
+		return
 	}
 
+	msg := "Opening data connection for RETR."
+	if offset > 0 {
+		msg = fmt.Sprintf("Opening data connection for RETR (restarting at %d).", offset)
+	}
+	s.runTransfer("RETR", path, msg, file, offset)
+}
+
+func (s *session) handleSTOR(path string) {
+	if !s.isLoggedIn {
+		s.reply(530, "Not logged in.")
+		return
+	}
+
+	// Determine flags based on restart
+	flags := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
+	if s.restartOffset > 0 {
+		flags = os.O_WRONLY | os.O_CREATE
+	}
+
+	file, err := s.fs.OpenFile(path, flags)
+	if err != nil {
+		s.replyError(err)
+		return
+	}
+
+	offset := s.restartOffset
+	if !s.restartFile(file) {
+		return
+	}
+
+	s.runTransfer("STOR", path, "Opening data connection for STOR.", file, offset)
+}
+
+func (s *session) handleAPPE(path string) {
+	if !s.isLoggedIn {
+		s.reply(530, "Not logged in.")
+		return
+	}
+	s.restartOffset = 0 // REST does not apply to APPE
+
+	file, err := s.fs.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE)
+	if err != nil {
+		s.replyError(err)
+		return
+	}
+
+	s.runTransfer("APPE", path, "Opening data connection for APPE.", file, 0)
+}
+
+func (s *session) handleSTOU(_ string) {
+	if !s.isLoggedIn {
+		s.reply(530, "Not logged in.")
+		return
+	}
+	s.restartOffset = 0 // REST does not apply to STOU
+
+	uuid := fmt.Sprintf("ftp-%d", time.Now().UnixNano())
+	path := uuid
+
+	file, err := s.fs.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
+	if err != nil {
+		s.replyError(err)
+		return
+	}
+
+	s.runTransfer("STOU", path, fmt.Sprintf("FILE: %s", path), file, 0)
+}
+
+// runTransfer replies 150 with msg, opens the data connection and copies
+// between it and file in the background. RETR sends file to the client;
+// STOR, APPE and STOU write what the client sends into file. It closes file.
+func (s *session) runTransfer(op, path, msg string, file io.ReadWriteCloser, offset int64) {
 	// Reply 150 before opening the data connection (RFC 959): with PROT P,
 	// clients start the TLS handshake only after this reply.
-	if s.restartOffset > 0 {
-		s.reply(150, fmt.Sprintf("Opening data connection for RETR (restarting at %d).", s.restartOffset))
-	} else {
-		s.reply(150, "Opening data connection for RETR.")
-	}
+	s.reply(150, msg)
 	conn, err := s.connData()
 	if err != nil {
 		file.Close()
@@ -74,10 +153,6 @@ func (s *session) handleRETR(path string) {
 	}
 	s.dataConn = conn // Store for ABOR
 
-	// Reset offset after use
-	offset := s.restartOffset
-	s.restartOffset = 0
-
 	ctx := s.startTransfer()
 
 	s.transferWG.Go(func() {
@@ -85,24 +160,38 @@ func (s *session) handleRETR(path string) {
 		defer file.Close()
 		defer conn.Close()
 
-		var src io.Reader = file
-		if s.transferType == "A" {
-			src = newASCIIReader(file)
-		}
-
 		// Track transfer metrics
 		startTime := time.Now()
 
-		// Apply bandwidth limiting to the connection (we're writing to it).
-		// Note: If no rate limiting is configured, rateLimitWriter returns the raw
-		// data connection (trackingConn). Since trackingConn implements io.ReaderFrom,
-		// io.CopyBuffer will call its ReadFrom method, which in turn calls the
-		// underlying TCPConn's ReadFrom. On Linux, this enables the use of
-		// sendfile(2) for zero-copy transfers when the source is a local file
-		// (binary mode) and the connection is not TLS-protected.
-		dst := s.rateLimitWriter(conn)
-
-		bytesTransferred, err := copyWithPooledBuffer(dst, src)
+		var bytesTransferred int64
+		var err error
+		if op == "RETR" {
+			var src io.Reader = file
+			if s.transferType == "A" {
+				src = newASCIIReader(file)
+			}
+			// Apply bandwidth limiting to the connection (we're writing to it).
+			// Note: If no rate limiting is configured, rateLimitWriter returns the raw
+			// data connection (trackingConn). Since trackingConn implements io.ReaderFrom,
+			// io.CopyBuffer will call its ReadFrom method, which in turn calls the
+			// underlying TCPConn's ReadFrom. On Linux, this enables the use of
+			// sendfile(2) for zero-copy transfers when the source is a local file
+			// (binary mode) and the connection is not TLS-protected.
+			bytesTransferred, err = copyWithPooledBuffer(s.rateLimitWriter(conn), src)
+		} else {
+			var src io.Reader = conn
+			if s.transferType == "A" {
+				src = newASCIIWriter(conn)
+			}
+			// Apply bandwidth limiting.
+			// Note: If no rate limiting is configured, rateLimitReader returns the raw
+			// data connection (trackingConn). Since trackingConn implements io.WriterTo,
+			// and the destination implements io.ReaderFrom (e.g. *os.File),
+			// io.CopyBuffer will use the optimized path. On Linux, this enables the
+			// use of splice(2) for zero-copy transfers from the socket to the file
+			// when in binary mode and not using TLS.
+			bytesTransferred, err = copyWithPooledBuffer(file, s.rateLimitReader(src))
+		}
 
 		// Check for cancellation
 		select {
@@ -139,7 +228,7 @@ func (s *session) handleRETR(path string) {
 			"remote_ip", s.redactIP(s.remoteIP),
 			"user", s.user,
 			"host", s.host,
-			"operation", "RETR",
+			"operation", op,
 			"path", s.redactPath(path),
 			"bytes", bytesTransferred,
 			"duration_ms", duration.Milliseconds(),
@@ -150,278 +239,11 @@ func (s *session) handleRETR(path string) {
 
 		// Metrics collection
 		if s.server.metricsCollector != nil {
-			s.server.metricsCollector.RecordTransfer("RETR", bytesTransferred, duration)
+			s.server.metricsCollector.RecordTransfer(op, bytesTransferred, duration)
 		}
 
 		// Transfer logging
-		s.logTransfer("RETR", path, bytesTransferred, duration)
-
-		s.endTransfer()
-		s.reply(226, "Transfer complete.")
-	})
-}
-func (s *session) handleSTOR(path string) {
-	if !s.isLoggedIn {
-		s.reply(530, "Not logged in.")
-		return
-	}
-
-	// Determine flags based on restart
-	flags := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
-	if s.restartOffset > 0 {
-		flags = os.O_WRONLY | os.O_CREATE
-	}
-
-	file, err := s.fs.OpenFile(path, flags)
-	if err != nil {
-		s.replyError(err)
-		return
-	}
-
-	if s.restartOffset > 0 {
-		if seeker, ok := file.(io.Seeker); ok {
-			_, err := seeker.Seek(s.restartOffset, io.SeekStart)
-			if err != nil {
-				file.Close()
-				s.replyError(err)
-				return
-			}
-		} else {
-			file.Close()
-			s.reply(550, "Resume not supported for this file.")
-			s.restartOffset = 0
-			return
-		}
-	}
-
-	// Reply 150 before opening the data connection (RFC 959): with PROT P,
-	// clients start the TLS handshake only after this reply.
-	s.reply(150, "Opening data connection for STOR.")
-	conn, err := s.connData()
-	if err != nil {
-		file.Close()
-		s.reply(425, "Can't open data connection.")
-		return
-	}
-	s.dataConn = conn
-
-	// Reset offset after use
-	s.restartOffset = 0
-
-	ctx := s.startTransfer()
-
-	s.transferWG.Go(func() {
-		defer s.endTransfer()
-		defer file.Close()
-		defer conn.Close()
-
-		// Track transfer metrics
-		startTime := time.Now()
-
-		var src io.Reader = conn
-		if s.transferType == "A" {
-			src = newASCIIWriter(conn)
-		}
-		// Apply bandwidth limiting.
-		// Note: If no rate limiting is configured, rateLimitReader returns the raw
-		// data connection (trackingConn). Since trackingConn implements io.WriterTo,
-		// and the destination implements io.ReaderFrom (e.g. *os.File),
-		// io.CopyBuffer will use the optimized path. On Linux, this enables the
-		// use of splice(2) for zero-copy transfers from the socket to the file
-		// when in binary mode and not using TLS.
-		src = s.rateLimitReader(src)
-
-		bytesTransferred, err := copyWithPooledBuffer(file, src)
-
-		select {
-		case <-ctx.Done():
-			s.reply(426, "Transfer aborted.")
-			return
-		default:
-		}
-
-		if err != nil {
-			s.reply(426, "Connection closed; transfer aborted.")
-			return
-		}
-		duration := time.Since(startTime)
-
-		// Calculate throughput in MB/s
-		throughputMBps := float64(0)
-		if duration.Seconds() > 0 {
-			throughputMBps = float64(bytesTransferred) / duration.Seconds() / 1024 / 1024
-		}
-
-		// Calculate bandwidth limit in MB/s for logging
-		// Use per-user limit if set, otherwise use global limit
-		bandwidthLimitMBps := float64(0)
-		if s.server.bandwidthLimitPerUser > 0 {
-			bandwidthLimitMBps = float64(s.server.bandwidthLimitPerUser) / 1024 / 1024
-		} else if s.server.bandwidthLimitGlobal > 0 {
-			bandwidthLimitMBps = float64(s.server.bandwidthLimitGlobal) / 1024 / 1024
-		}
-
-		// Transfer logging
-		s.server.logger.Info("transfer_complete",
-			"session_id", s.sessionID,
-			"remote_ip", s.redactIP(s.remoteIP),
-			"user", s.user,
-			"host", s.host,
-			"operation", "STOR",
-			"path", s.redactPath(path),
-			"bytes", bytesTransferred,
-			"duration_ms", duration.Milliseconds(),
-			"throughput_mbps", fmt.Sprintf("%.2f", throughputMBps),
-			"bandwidth_limit_mbps", fmt.Sprintf("%.2f", bandwidthLimitMBps),
-		)
-
-		// Metrics collection
-		if s.server.metricsCollector != nil {
-			s.server.metricsCollector.RecordTransfer("STOR", bytesTransferred, duration)
-		}
-
-		// Transfer logging
-		s.logTransfer("STOR", path, bytesTransferred, duration)
-
-		s.endTransfer()
-		s.reply(226, "Transfer complete.")
-	})
-}
-func (s *session) handleAPPE(path string) {
-	if !s.isLoggedIn {
-		s.reply(530, "Not logged in.")
-		return
-	}
-
-	file, err := s.fs.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE)
-	if err != nil {
-		s.replyError(err)
-		return
-	}
-
-	// Reply 150 before opening the data connection (RFC 959): with PROT P,
-	// clients start the TLS handshake only after this reply.
-	s.reply(150, "Opening data connection for APPE.")
-	conn, err := s.connData()
-	if err != nil {
-		file.Close()
-		s.reply(425, "Can't open data connection.")
-		return
-	}
-	s.dataConn = conn
-
-	ctx := s.startTransfer()
-
-	s.transferWG.Go(func() {
-		defer s.endTransfer()
-		defer file.Close()
-		defer conn.Close()
-
-		startTime := time.Now()
-		var src io.Reader = conn
-		if s.transferType == "A" {
-			src = newASCIIWriter(conn)
-		}
-		// Apply bandwidth limiting.
-		// Note: If no rate limiting is configured, rateLimitReader returns the raw
-		// data connection (trackingConn). Since trackingConn implements io.WriterTo,
-		// and the destination implements io.ReaderFrom (e.g. *os.File),
-		// io.CopyBuffer will use the optimized path. On Linux, this enables the
-		// use of splice(2) for zero-copy transfers from the socket to the file
-		// when in binary mode and not using TLS.
-		src = s.rateLimitReader(src)
-
-		bytesTransferred, err := copyWithPooledBuffer(file, src)
-		if err != nil {
-			select {
-			case <-ctx.Done():
-				s.reply(426, "Transfer aborted.")
-			default:
-				s.reply(426, "Connection closed; transfer aborted.")
-			}
-			return
-		}
-		duration := time.Since(startTime)
-
-		// Transfer logging
-		s.logTransfer("APPE", path, bytesTransferred, duration)
-
-		// Metrics collection
-		if s.server.metricsCollector != nil {
-			s.server.metricsCollector.RecordTransfer("APPE", bytesTransferred, duration)
-		}
-
-		s.endTransfer()
-		s.reply(226, "Transfer complete.")
-	})
-}
-
-func (s *session) handleSTOU(_ string) {
-	if !s.isLoggedIn {
-		s.reply(530, "Not logged in.")
-		return
-	}
-
-	uuid := fmt.Sprintf("ftp-%d", time.Now().UnixNano())
-	path := uuid
-
-	file, err := s.fs.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
-	if err != nil {
-		s.replyError(err)
-		return
-	}
-
-	// Reply 150 before opening the data connection (RFC 959): with PROT P,
-	// clients start the TLS handshake only after this reply.
-	s.reply(150, fmt.Sprintf("FILE: %s", path))
-	conn, err := s.connData()
-	if err != nil {
-		file.Close()
-		s.reply(425, "Can't open data connection.")
-		return
-	}
-	s.dataConn = conn
-
-	ctx := s.startTransfer()
-
-	s.transferWG.Go(func() {
-		defer s.endTransfer()
-		defer file.Close()
-		defer conn.Close()
-
-		startTime := time.Now()
-		var src io.Reader = conn
-		if s.transferType == "A" {
-			src = newASCIIWriter(conn)
-		}
-		// Apply bandwidth limiting.
-		// Note: If no rate limiting is configured, rateLimitReader returns the raw
-		// data connection (trackingConn). Since trackingConn implements io.WriterTo,
-		// and the destination implements io.ReaderFrom (e.g. *os.File),
-		// io.CopyBuffer will use the optimized path. On Linux, this enables the
-		// use of splice(2) for zero-copy transfers from the socket to the file
-		// when in binary mode and not using TLS.
-		src = s.rateLimitReader(src)
-
-		bytesTransferred, err := copyWithPooledBuffer(file, src)
-		if err != nil {
-			select {
-			case <-ctx.Done():
-				s.reply(426, "Transfer aborted.")
-			default:
-				s.reply(426, "Connection closed; transfer aborted.")
-			}
-			return
-		}
-		duration := time.Since(startTime)
-
-		// Transfer logging
-		s.logTransfer("STOU", path, bytesTransferred, duration)
-
-		// Metrics collection
-		if s.server.metricsCollector != nil {
-			s.server.metricsCollector.RecordTransfer("STOU", bytesTransferred, duration)
-		}
+		s.logTransfer(op, path, bytesTransferred, duration)
 
 		s.endTransfer()
 		s.reply(226, "Transfer complete.")
