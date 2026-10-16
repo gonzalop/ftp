@@ -72,19 +72,7 @@ func (s *session) handleLIST(arg string) {
 	// Parse flags and path
 	// Common flags: -l, -a, -R
 	// Format: LIST [-flags] [path]
-	var path string
-	var recursive bool
-
-	args := strings.FieldsSeq(arg)
-	for a := range args {
-		if strings.HasPrefix(a, "-") {
-			if strings.Contains(a, "R") {
-				recursive = true
-			}
-		} else {
-			path = a
-		}
-	}
+	path, recursive := parseListArgs(arg)
 
 	// If no path provided, list current
 	// if path == "" {
@@ -140,6 +128,18 @@ func (s *session) handleLIST(arg string) {
 }
 
 const maxListDepth = 100
+
+// parseListArgs splits a LIST or MLSD argument into leading flags and a path.
+// The path is the rest of the line, so it may contain spaces.
+func parseListArgs(arg string) (path string, recursive bool) {
+	arg = strings.TrimLeft(arg, " ")
+	for strings.HasPrefix(arg, "-") {
+		flags, rest, _ := strings.Cut(arg, " ")
+		recursive = recursive || strings.Contains(flags, "R")
+		arg = strings.TrimLeft(rest, " ")
+	}
+	return arg, recursive
+}
 
 func (s *session) listRecursive(w io.Writer, path string, depth int) error {
 	if depth > maxListDepth {

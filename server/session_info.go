@@ -117,19 +117,7 @@ func (s *session) handleMLSD(arg string) {
 
 	// Parse flags and path
 	// MLSD [-R] [path]
-	var path string
-	var recursive bool
-
-	args := strings.FieldsSeq(arg)
-	for a := range args {
-		if strings.HasPrefix(a, "-") {
-			if strings.Contains(a, "R") {
-				recursive = true
-			}
-		} else {
-			path = a
-		}
-	}
+	path, recursive := parseListArgs(arg)
 
 	conn, err := s.connData()
 	if err != nil {

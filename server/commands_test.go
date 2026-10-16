@@ -227,3 +227,42 @@ func setupTestServer(t *testing.T, readOnly bool) (*ftp.Client, string, func()) 
 
 	return c, rootDir, teardown
 }
+
+func TestParseListArgs(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		arg       string
+		path      string
+		recursive bool
+	}{
+		{"", "", false},
+		{"-la", "", false},
+		{"-R", "", true},
+		{"-l My Documents", "My Documents", false},
+		{"My Documents", "My Documents", false},
+		{"-a -R dir", "dir", true},
+	}
+	for _, tt := range tests {
+		path, recursive := parseListArgs(tt.arg)
+		if path != tt.path || recursive != tt.recursive {
+			t.Errorf("parseListArgs(%q) = %q, %v; want %q, %v", tt.arg, path, recursive, tt.path, tt.recursive)
+		}
+	}
+}
+
+func TestListPathWithSpaces(t *testing.T) {
+	t.Parallel()
+	c, rootDir, teardown := setupTestServer(t, false)
+	defer teardown()
+
+	dir := filepath.Join(rootDir, "My Documents")
+	fatalIfErr(t, os.Mkdir(dir, 0755), "mkdir")
+	fatalIfErr(t, os.WriteFile(filepath.Join(dir, "inside.txt"), nil, 0644), "write file")
+	fatalIfErr(t, os.Mkdir(filepath.Join(rootDir, "Documents"), 0755), "mkdir decoy")
+
+	entries, err := c.List("My Documents")
+	fatalIfErr(t, err, "List")
+	if len(entries) != 1 || entries[0].Name != "inside.txt" {
+		t.Errorf("List(\"My Documents\") = %v, want [inside.txt]", entries)
+	}
+}
