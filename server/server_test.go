@@ -3,9 +3,12 @@ package server
 import (
 	"bytes"
 	"context"
+	"errors"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -230,5 +233,61 @@ func TestListenAndServe(t *testing.T) {
 		t.Fatalf("ListenAndServe failed immediately: %v", err)
 	case <-time.After(200 * time.Millisecond):
 		// Assume it started successfully if it hasn't returned in 200ms
+	}
+}
+
+// failingListener fails every Accept, like a process out of file descriptors.
+type failingListener struct {
+	net.Listener
+	accepts atomic.Int32
+}
+
+func (l *failingListener) Accept() (net.Conn, error) {
+	l.accepts.Add(1)
+	return nil, errors.New("accept: too many open files")
+}
+
+func TestServe_BacksOffOnAcceptErrors(t *testing.T) {
+	t.Parallel()
+	driver, err := NewFSDriver(t.TempDir())
+	fatalIfErr(t, err, "NewFSDriver")
+	srv, err := NewServer(":0", WithDriver(driver), WithLogger(slog.New(slog.DiscardHandler)))
+	fatalIfErr(t, err, "NewServer")
+	inner, err := net.Listen("tcp", "127.0.0.1:0")
+	fatalIfErr(t, err, "listen")
+	ln := &failingListener{Listener: inner}
+	go func() { _ = srv.Serve(ln) }()
+
+	time.Sleep(200 * time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_ = srv.Shutdown(ctx)
+
+	// Delays of 5, 10, 20, 40, 80 ms fit about six attempts into 200 ms.
+	if n := ln.accepts.Load(); n > 20 {
+		t.Errorf("Accept called %d times in 200ms; want backoff between failures", n)
+	}
+}
+
+func TestServe_ReturnsWhenListenerClosed(t *testing.T) {
+	t.Parallel()
+	driver, err := NewFSDriver(t.TempDir())
+	fatalIfErr(t, err, "NewFSDriver")
+	srv, err := NewServer(":0", WithDriver(driver))
+	fatalIfErr(t, err, "NewServer")
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	fatalIfErr(t, err, "listen")
+	done := make(chan error, 1)
+	go func() { done <- srv.Serve(ln) }()
+	time.Sleep(50 * time.Millisecond)
+	ln.Close()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, net.ErrClosed) {
+			t.Errorf("Serve returned %v, want net.ErrClosed", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Serve kept running after its listener was closed")
 	}
 }

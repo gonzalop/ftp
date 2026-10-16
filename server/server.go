@@ -416,15 +416,24 @@ func (s *Server) Serve(l net.Listener) error {
 		l.Close()
 	}()
 
+	var retryDelay time.Duration
 	for {
 		conn, err := l.Accept()
 		if err != nil {
 			if s.inShutdown.Load() {
 				return ErrServerClosed
 			}
-			s.logger.Error("accept error", "error", err)
+			if errors.Is(err, net.ErrClosed) {
+				return err
+			}
+			// Back off on errors such as running out of file descriptors,
+			// instead of spinning and flooding the log (as net/http does).
+			retryDelay = min(max(2*retryDelay, 5*time.Millisecond), time.Second)
+			s.logger.Error("accept error", "error", err, "retry_in", retryDelay)
+			time.Sleep(retryDelay)
 			continue
 		}
+		retryDelay = 0
 
 		go s.handleConnection(conn)
 	}
