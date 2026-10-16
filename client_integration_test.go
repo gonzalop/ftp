@@ -259,6 +259,81 @@ func TestClient_ExplicitTLS(t *testing.T) {
 	}
 }
 
+// TestClient_TLSTransfers moves data over PROT P in both data connection modes.
+func TestClient_TLSTransfers(t *testing.T) {
+	t.Parallel()
+	serverCertPath, serverKeyPath, _, _ := generateCert(t, false, nil, nil)
+	serverTLSConfig, err := tls.LoadX509KeyPair(serverCertPath, serverKeyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootDir := t.TempDir()
+	driver, err := server.NewFSDriver(rootDir,
+		server.WithAuthenticator(func(_, _, _ string, _ net.IP) (string, bool, error) {
+			return rootDir, false, nil
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := server.NewServer("127.0.0.1:0",
+		server.WithDriver(driver),
+		server.WithTLS(&tls.Config{Certificates: []tls.Certificate{serverTLSConfig}}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener, err := SystemListener()
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = s.Serve(listener) }()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = s.Shutdown(ctx)
+	}()
+
+	for _, mode := range []struct {
+		name string
+		opts []ftp.Option
+	}{
+		{"passive", nil},
+		{"active", []ftp.Option{ftp.WithActiveMode()}},
+	} {
+		t.Run(mode.name, func(t *testing.T) {
+			opts := append([]ftp.Option{
+				ftp.WithTimeout(5 * time.Second),
+				ftp.WithExplicitTLS(&tls.Config{InsecureSkipVerify: true}), // Self-signed cert
+			}, mode.opts...)
+			c, err := ftp.Dial(listener.Addr().String(), opts...)
+			if err != nil {
+				t.Fatalf("Failed to dial: %v", err)
+			}
+			defer func() { _ = c.Quit() }()
+			if err := c.Login("anonymous", "anonymous"); err != nil {
+				t.Fatalf("Login failed: %v", err)
+			}
+
+			content := mode.name + " mode over TLS"
+			if err := c.Store(mode.name+".txt", strings.NewReader(content)); err != nil {
+				t.Fatalf("Store failed: %v", err)
+			}
+			var buf bytes.Buffer
+			if err := c.Retrieve(mode.name+".txt", &buf); err != nil {
+				t.Fatalf("Retrieve failed: %v", err)
+			}
+			if buf.String() != content {
+				t.Errorf("Retrieve: got %q, want %q", buf.String(), content)
+			}
+			// An empty upload never writes, so the handshake must not wait for data.
+			if err := c.Store(mode.name+"-empty.txt", strings.NewReader("")); err != nil {
+				t.Fatalf("empty Store failed: %v", err)
+			}
+		})
+	}
+}
+
 func TestClient_ImplicitTLS(t *testing.T) {
 	t.Parallel()
 	// 1. Generate Server Cert

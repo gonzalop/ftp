@@ -149,3 +149,24 @@ func TestActiveDataConn_Coverage(t *testing.T) {
 
 	<-done
 }
+
+func TestActiveDataConn_RejectsOtherPeers(t *testing.T) {
+	t.Parallel()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The server is somewhere else, so our own dial must be dropped.
+	a := &activeDataConn{listener: ln, timeout: 300 * time.Millisecond, serverIP: net.ParseIP("192.0.2.1")}
+	defer a.Close()
+
+	stranger, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stranger.Close()
+
+	if _, err := a.Read(make([]byte, 1)); err == nil {
+		t.Fatal("Read accepted a data connection from a peer that is not the server")
+	}
+}

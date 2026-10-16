@@ -231,10 +231,16 @@ func (c *Client) openActiveDataConn() (net.Conn, error) {
 	// Accept the connection from the server
 	// Note: The actual connection happens after we send the transfer command (RETR, STOR, etc.)
 	// So we return a wrapper that will accept when needed
+	var serverIP net.IP
+	if host, _, err := net.SplitHostPort(c.conn.RemoteAddr().String()); err == nil {
+		serverIP = net.ParseIP(host)
+	}
+
 	return &activeDataConn{
 		listener:  listener,
 		tlsConfig: c.tlsConfig,
 		timeout:   c.timeout,
+		serverIP:  serverIP,
 	}, nil
 }
 
@@ -244,6 +250,7 @@ type activeDataConn struct {
 	conn      net.Conn
 	tlsConfig *tls.Config
 	timeout   time.Duration
+	serverIP  net.IP // only this peer may connect; nil skips the check
 }
 
 func (a *activeDataConn) accept() error {
@@ -252,15 +259,25 @@ func (a *activeDataConn) accept() error {
 			_ = l.SetDeadline(time.Now().Add(a.timeout))
 		}
 	}
-	c, err := a.listener.Accept()
-	if err != nil {
-		return err
+	// Only the server may connect; anyone else who reaches the port first
+	// could inject or receive the data. Drop other peers and keep waiting
+	// until the listener deadline.
+	for {
+		c, err := a.listener.Accept()
+		if err != nil {
+			return err
+		}
+		if a.isServer(c.RemoteAddr()) {
+			a.conn = c
+			break
+		}
+		c.Close()
 	}
-	a.conn = c
 
-	// Wrap in TLS if needed
+	// Wrap in TLS if needed. RFC 4217: the FTP client is always the TLS
+	// client, also when the server opens the data connection.
 	if a.tlsConfig != nil {
-		tlsConn := tls.Server(a.conn, a.tlsConfig)
+		tlsConn := tls.Client(a.conn, a.tlsConfig)
 		// Set deadline for handshake
 		if a.timeout > 0 {
 			_ = a.conn.SetDeadline(time.Now().Add(a.timeout))
@@ -272,6 +289,29 @@ func (a *activeDataConn) accept() error {
 		a.conn = tlsConn
 	}
 	return nil
+}
+
+// Handshake accepts the server's connection, and runs TLS on it if
+// configured, unless that already happened.
+func (a *activeDataConn) Handshake() error {
+	if a.conn != nil {
+		return nil
+	}
+	return a.accept()
+}
+
+// isServer reports whether addr is the FTP server. Loopback addresses may
+// differ (127.0.0.1 and ::1), as the server allows too.
+func (a *activeDataConn) isServer(addr net.Addr) bool {
+	if a.serverIP == nil {
+		return true
+	}
+	host, _, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && (ip.Equal(a.serverIP) || (ip.IsLoopback() && a.serverIP.IsLoopback()))
 }
 
 func (a *activeDataConn) Read(p []byte) (n int, err error) {
@@ -414,19 +454,16 @@ func (c *Client) openPassiveDataConn() (net.Conn, error) {
 		return nil, fmt.Errorf("failed to connect to data port: %w", err)
 	}
 
-	// If TLS is enabled, wrap the data connection
-	if c.tlsConfig != nil {
-		tlsConn := tls.Client(dataConn, c.tlsConfig)
-		if err := tlsConn.Handshake(); err != nil {
-			dataConn.Close()
-			return nil, fmt.Errorf("data connection TLS handshake failed: %w", err)
-		}
-		dataConn = tlsConn
-	}
-
 	// Wrap with deadline connection if timeout is set
 	if c.timeout > 0 {
-		return &deadlineConn{Conn: dataConn, timeout: c.timeout}, nil
+		dataConn = &deadlineConn{Conn: dataConn, timeout: c.timeout}
+	}
+
+	// If TLS is enabled, wrap the data connection. The handshake runs in
+	// cmdDataConnFrom after the server's 1xx reply: servers start TLS on the
+	// data connection only once they have the transfer command.
+	if c.tlsConfig != nil {
+		dataConn = tls.Client(dataConn, c.tlsConfig)
 	}
 
 	return dataConn, nil
@@ -473,6 +510,15 @@ func (c *Client) cmdDataConnFrom(cmd string, args ...string) (*Response, net.Con
 				Response: resp.Message,
 				Code:     resp.Code,
 			}
+		}
+	}
+
+	// Start TLS on the data connection now that the server expects it.
+	if h, ok := dataConn.(interface{ Handshake() error }); ok {
+		if err := h.Handshake(); err != nil {
+			// Read the server's reply to the failed transfer to stay in sync.
+			_ = c.finishDataConn(dataConn)
+			return resp, nil, fmt.Errorf("data connection TLS handshake failed: %w", err)
 		}
 	}
 
