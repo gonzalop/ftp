@@ -267,3 +267,38 @@ func BenchmarkWriter(b *testing.B) {
 		}
 	}
 }
+
+func TestLimitHoldsForWritesLargerThanBurst(t *testing.T) {
+	t.Parallel()
+	// 1000 B/s with a 1000 B burst; two 2000 B writes need ~3s.
+	w := NewWriter(io.Discard, New(1000))
+	start := time.Now()
+	for range 2 {
+		if _, err := w.Write(make([]byte, 2000)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if d := time.Since(start); d < 2700*time.Millisecond {
+		t.Errorf("4000 bytes at 1000 B/s took %v, want about 3s", d)
+	}
+}
+
+func TestSharedLimiterHoldsAcrossGoroutines(t *testing.T) {
+	t.Parallel()
+	// Four writers share 4000 B/s (4000 B burst); 16000 B total needs ~3s.
+	limiter := New(4000)
+	start := time.Now()
+	done := make(chan struct{})
+	for range 4 {
+		go func() {
+			_, _ = NewWriter(io.Discard, limiter).Write(make([]byte, 4000))
+			done <- struct{}{}
+		}()
+	}
+	for range 4 {
+		<-done
+	}
+	if d := time.Since(start); d < 2700*time.Millisecond {
+		t.Errorf("16000 bytes at 4000 B/s took %v, want about 3s", d)
+	}
+}

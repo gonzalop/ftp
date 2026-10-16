@@ -42,8 +42,10 @@ func New(bytesPerSecond int64) *Limiter {
 	}
 }
 
-// take attempts to consume n tokens from the bucket.
-// If insufficient tokens are available, it sleeps for the minimum time needed.
+// take consumes n tokens from the bucket, sleeping until they are earned.
+// Tokens may go negative: that debt makes the next callers wait too, so
+// the average rate holds even when n exceeds the burst size or many
+// goroutines share the limiter.
 func (rl *Limiter) take(n int) {
 	if rl == nil || n <= 0 {
 		return
@@ -61,46 +63,16 @@ func (rl *Limiter) take(n int) {
 	}
 	rl.lastUpdate = now
 
-	// If we have enough tokens, consume and return immediately
-	tokensNeeded := float64(n)
-	if rl.tokens >= tokensNeeded {
-		rl.tokens -= tokensNeeded
-		rl.mu.Unlock()
-		return
-	}
-
-	// Not enough tokens - calculate minimum wait time
-	tokensShort := tokensNeeded - rl.tokens
-	waitDuration := time.Duration(tokensShort/rl.rate*1e9) * time.Nanosecond
-
-	// Cap wait time at 1 second to avoid excessive blocking
-	const maxWait = time.Second
-	if waitDuration > maxWait {
-		waitDuration = maxWait
+	rl.tokens -= float64(n)
+	var waitDuration time.Duration
+	if rl.tokens < 0 {
+		waitDuration = time.Duration(-rl.tokens / rl.rate * float64(time.Second))
 	}
 
 	rl.mu.Unlock()
 
 	// Sleep for the required time
 	time.Sleep(waitDuration)
-
-	// After sleeping, update tokens and consume
-	rl.mu.Lock()
-	now = time.Now()
-	elapsed = now.Sub(rl.lastUpdate).Seconds()
-	rl.tokens += elapsed * rl.rate
-	if rl.tokens > rl.burst {
-		rl.tokens = rl.burst
-	}
-	rl.lastUpdate = now
-
-	// Consume what we can (might be less than requested if we hit max wait)
-	if rl.tokens >= tokensNeeded {
-		rl.tokens -= tokensNeeded
-	} else {
-		rl.tokens = 0 // Consume all available
-	}
-	rl.mu.Unlock()
 }
 
 // rateLimitedReader wraps an io.Reader to limit read speed.
@@ -132,11 +104,10 @@ func (r *reader) Read(p []byte) (n int, err error) {
 	const maxChunkSize = 8 * 1024 // 8KB chunks
 	readSize := min(len(p), maxChunkSize)
 
-	// Consume tokens for this read
-	r.limiter.take(readSize)
-
-	// Read the data
-	return r.r.Read(p[:readSize])
+	// Read the data, then pay for the bytes actually read
+	n, err = r.r.Read(p[:readSize])
+	r.limiter.take(n)
+	return n, err
 }
 
 // rateLimitedWriter wraps an io.Writer to limit write speed.
