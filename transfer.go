@@ -3,7 +3,6 @@ package ftp
 import (
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"path"
 	"path/filepath"
@@ -293,29 +292,26 @@ func (c *Client) RetrieveFrom(remotePath string, w io.Writer, offset int64) erro
 }
 
 // StoreAt uploads a file starting from the specified byte offset.
-// This allows resuming an interrupted upload by appending to an existing file.
+// This allows resuming an interrupted upload of an existing file.
 // The transfer is performed in binary mode (TYPE I).
 //
-// Note: This uses APPE (append) mode when offset > 0, which may not be supported
-// by all servers for resume functionality. For true resume support, the server
-// must support REST+STOR, which is less common.
+// When offset > 0 it sends REST offset before STOR, so the server writes r
+// starting at that byte (RFC 3659 "REST STREAM"). Bytes after the written
+// range are left as they were.
 func (c *Client) StoreAt(remotePath string, r io.Reader, offset int64) error {
 	// Set binary mode
 	if err := c.Type("I"); err != nil {
 		return fmt.Errorf("failed to set binary mode: %w", err)
 	}
 
-	var dataConn net.Conn
-	var err error
-
+	// Set restart marker if offset is specified
 	if offset > 0 {
-		// Use APPE for resume (append mode)
-		_, dataConn, err = c.cmdDataConnFrom("APPE", remotePath)
-	} else {
-		// Normal STOR
-		_, dataConn, err = c.cmdDataConnFrom("STOR", remotePath)
+		if err := c.RestartAt(offset); err != nil {
+			return fmt.Errorf("failed to set restart marker: %w", err)
+		}
 	}
 
+	_, dataConn, err := c.cmdDataConnFrom("STOR", remotePath)
 	if err != nil {
 		return err
 	}

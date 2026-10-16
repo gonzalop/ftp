@@ -917,6 +917,21 @@ func testResumeOperations(t *testing.T, c *ftp.Client, rootDir string) {
 		t.Errorf("StoreAt content mismatch: got %q, want %q", string(fullContent), initialContent+appendContent)
 	}
 
+	// StoreAt writes at the offset, not at the end of the file.
+	if err := c.Store("resume_mid.txt", bytes.NewBufferString("0123456789")); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StoreAt("resume_mid.txt", bytes.NewBufferString("XY"), 4); err != nil {
+		t.Errorf("StoreAt at offset 4 failed: %v", err)
+	}
+	midContent, err := os.ReadFile(filepath.Join(rootDir, "resume_mid.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(midContent) != "0123XY6789" {
+		t.Errorf("StoreAt at offset 4: got %q, want %q", midContent, "0123XY6789")
+	}
+
 	// 24. Test RestartAt
 	if err := c.RestartAt(5); err != nil {
 		t.Errorf("RestartAt failed: %v", err)
