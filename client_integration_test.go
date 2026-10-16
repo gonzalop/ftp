@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -1839,11 +1840,9 @@ func startServer(t *testing.T) (string, *server.Server, string) {
 	}
 
 	go func() {
-		if err := s.Serve(ln); err != nil {
-			// Serve returns ErrServerClosed on shutdown, which we can ignore or log.
-			// But since we don't have access to ErrServerClosed easily without import,
-			// and this is a test helper, simple logging is fine.
-			// Ideally we would check for the specific error.
+		// Serve returns ErrServerClosed on shutdown, which may happen after the
+		// test has finished; calling t.Logf then is a data race.
+		if err := s.Serve(ln); err != nil && !errors.Is(err, server.ErrServerClosed) {
 			t.Logf("Serve error: %v", err)
 		}
 	}()
