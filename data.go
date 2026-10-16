@@ -494,22 +494,18 @@ func (c *Client) cmdDataConnFrom(cmd string, args ...string) (*Response, net.Con
 		return nil, nil, err
 	}
 
-	// Check for preliminary success (1xx) or immediate success (2xx)
-	if !resp.Is2xx() && !resp.Is3xx() && resp.Code < 100 || resp.Code >= 200 {
-		// For data transfer commands, we expect:
-		// - 1xx (preliminary positive) - transfer starting
-		// - 2xx (positive completion) - already done
-		// We'll be lenient and accept both
-		if resp.Code < 100 || resp.Code >= 400 {
-			dataConn.Close()
-			c.mu.Lock()
-			c.activeDataConn = nil
-			c.mu.Unlock()
-			return resp, nil, &ProtocolError{
-				Command:  cmd,
-				Response: resp.Message,
-				Code:     resp.Code,
-			}
+	// A data transfer starts with a preliminary (1xx) reply. Any other reply
+	// means the server will not use the data connection; waiting for a
+	// completion reply after a 2xx or 3xx would hang until the timeout.
+	if resp.Code < 100 || resp.Code >= 200 {
+		dataConn.Close()
+		c.mu.Lock()
+		c.activeDataConn = nil
+		c.mu.Unlock()
+		return resp, nil, &ProtocolError{
+			Command:  cmd,
+			Response: resp.Message,
+			Code:     resp.Code,
 		}
 	}
 

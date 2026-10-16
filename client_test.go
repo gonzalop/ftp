@@ -351,3 +351,42 @@ func TestClient_EPSV_FailButNot502(t *testing.T) {
 		t.Errorf("Expected 2 EPSV commands (retry on non-502), got %d. Commands: %v", epsvCount, ms.receivedCommands)
 	}
 }
+
+func TestClient_DataCommandWithout1xx(t *testing.T) {
+	t.Parallel()
+	ms := newMockServer(t)
+
+	epsvL, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms.dataListener = epsvL
+	_, portStr, _ := net.SplitHostPort(epsvL.Addr().String())
+	ms.handlers["EPSV"] = func(c *textproto.Conn, _ string) {
+		_ = c.PrintfLine("229 Entering Extended Passive Mode (|||%s|)", portStr)
+	}
+	// Answer LIST with a completion reply and no 150.
+	ms.handlers["LIST"] = func(c *textproto.Conn, _ string) {
+		_ = c.PrintfLine("226 Nothing to list.")
+	}
+
+	ms.start()
+	defer ms.stop()
+
+	c, err := Dial(ms.addr, WithTimeout(2*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Quit() }()
+	if err := c.Login("anonymous", "anonymous"); err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Now()
+	if _, err := c.List("."); err == nil {
+		t.Error("List succeeded without a 1xx reply, want error")
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Errorf("List took %v; it waited for a reply that never comes", d)
+	}
+}
