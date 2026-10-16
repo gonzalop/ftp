@@ -81,6 +81,9 @@ type Client struct {
 	// quitChan signals the keep-alive goroutine to stop
 	quitChan chan struct{}
 
+	// quitOnce makes Quit run only once
+	quitOnce sync.Once
+
 	// activeDataConn tracks the currently active data connection
 	activeDataConn net.Conn
 
@@ -495,29 +498,34 @@ func (c *Client) NoOp() error {
 
 // Quit sends the QUIT command and closes the connection.
 // If a file transfer is in progress, it will be aborted by closing the data connection.
+// Calling Quit more than once is safe; later calls return nil.
 func (c *Client) Quit() error {
 	if c.conn == nil {
 		return nil
 	}
 
-	// Stop keep-alive loop
-	if c.quitChan != nil {
-		close(c.quitChan)
-	}
+	var err error
+	c.quitOnce.Do(func() {
+		// Stop keep-alive loop
+		if c.quitChan != nil {
+			close(c.quitChan)
+		}
 
-	// Abort active transfer if any
-	c.mu.Lock()
-	if c.activeDataConn != nil {
-		c.activeDataConn.Close()
-		c.activeDataConn = nil
-	}
-	c.mu.Unlock()
+		// Abort active transfer if any
+		c.mu.Lock()
+		if c.activeDataConn != nil {
+			c.activeDataConn.Close()
+			c.activeDataConn = nil
+		}
+		c.mu.Unlock()
 
-	// Send QUIT command (ignore errors, we're closing anyway)
-	_, _ = c.sendCommand("QUIT")
+		// Send QUIT command (ignore errors, we're closing anyway)
+		_, _ = c.sendCommand("QUIT")
 
-	// Close the connection
-	return c.conn.Close()
+		// Close the connection
+		err = c.conn.Close()
+	})
+	return err
 }
 
 // Host sends the HOST command to the server.

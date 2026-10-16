@@ -380,6 +380,24 @@ func TestClient_KeepAlive(t *testing.T) {
 	}
 }
 
+func TestClient_QuitTwice(t *testing.T) {
+	t.Parallel()
+	addr, cleanup, _ := setupServer(t)
+	defer cleanup()
+
+	// WithIdleTimeout starts the keep-alive goroutine that Quit stops.
+	c, err := ftp.Dial(addr, ftp.WithTimeout(5*time.Second), ftp.WithIdleTimeout(time.Minute))
+	if err != nil {
+		t.Fatalf("Failed to dial: %v", err)
+	}
+	if err := c.Quit(); err != nil {
+		t.Fatalf("first Quit: %v", err)
+	}
+	if err := c.Quit(); err != nil {
+		t.Fatalf("second Quit: %v", err)
+	}
+}
+
 func TestClient_ActiveMode(t *testing.T) {
 	t.Parallel()
 	addr, cleanup, _ := setupServer(t)
