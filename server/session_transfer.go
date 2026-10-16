@@ -19,9 +19,16 @@ func (s *session) startTransfer() context.Context {
 	return s.transferCtx
 }
 
-func (s *session) endTransfer() {
+// endTransfer marks the transfer that owns ctx as finished. The transfer
+// goroutine calls it twice, before its final reply and deferred; by the
+// second call the client may already have started the next transfer, which
+// must not be canceled.
+func (s *session) endTransfer(ctx context.Context) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.transferCtx != ctx {
+		return
+	}
 	s.busy = false
 	if s.transferCancel != nil {
 		s.transferCancel()
@@ -155,7 +162,7 @@ func (s *session) runTransfer(op, path, msg string, file io.ReadWriteCloser, off
 	ctx := s.startTransfer()
 
 	s.transferWG.Go(func() {
-		defer s.endTransfer()
+		defer s.endTransfer(ctx)
 		defer file.Close()
 		defer conn.Close()
 
@@ -244,7 +251,7 @@ func (s *session) runTransfer(op, path, msg string, file io.ReadWriteCloser, off
 		// Transfer logging
 		s.logTransfer(op, path, bytesTransferred, duration)
 
-		s.endTransfer()
+		s.endTransfer(ctx)
 		s.reply(226, "Transfer complete.")
 	})
 }

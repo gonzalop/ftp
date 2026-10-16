@@ -629,3 +629,26 @@ func TestRESTDoesNotLeakPastAPPE(t *testing.T) {
 		t.Errorf("RETR after REST+APPE: got %q, want %q", data, "012345")
 	}
 }
+
+func TestLateEndTransferKeepsNextTransfer(t *testing.T) {
+	t.Parallel()
+	s := &session{}
+
+	// Transfer A ends; its goroutine's deferred endTransfer runs only after
+	// the client has already started transfer B.
+	ctxA := s.startTransfer()
+	s.endTransfer(ctxA)
+	ctxB := s.startTransfer()
+	s.endTransfer(ctxA)
+
+	if ctxB.Err() != nil {
+		t.Fatal("late endTransfer of transfer A canceled transfer B")
+	}
+	if !s.busy {
+		t.Fatal("late endTransfer of transfer A cleared busy for transfer B")
+	}
+	s.endTransfer(ctxB)
+	if ctxB.Err() == nil || s.busy {
+		t.Fatal("endTransfer of transfer B did not end it")
+	}
+}
