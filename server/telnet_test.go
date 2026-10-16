@@ -1,8 +1,11 @@
 package server
 
 import (
+	"bufio"
 	"bytes"
+	"crypto/tls"
 	"io"
+	"strings"
 	"testing"
 )
 
@@ -73,5 +76,27 @@ func TestTelnetReader(t *testing.T) {
 				t.Errorf("expected %q, got %q", tt.expected, buf.Bytes())
 			}
 		})
+	}
+}
+
+func TestTelnetFilterAfterAuthTLS(t *testing.T) {
+	t.Parallel()
+	certPath, keyPath, _, _ := generateCert(t, false, nil, nil)
+	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	fatalIfErr(t, err, "load cert")
+	driver, err := NewFSDriver(t.TempDir())
+	fatalIfErr(t, err, "NewFSDriver")
+	_, addr := startRawServer(t, driver, WithTLS(&tls.Config{Certificates: []tls.Certificate{cert}}))
+
+	c := dialRaw(t, addr)
+	if r := c.cmd("AUTH TLS"); !strings.HasPrefix(r, "234 ") {
+		t.Fatalf("AUTH TLS: got %q, want 234", r)
+	}
+	tlsConn := tls.Client(c.conn, &tls.Config{InsecureSkipVerify: true})
+	c.conn, c.r = tlsConn, bufio.NewReader(tlsConn)
+
+	// IAC IP (interrupt process) before the command must be dropped.
+	if r := c.cmd("\xff\xf4NOOP"); !strings.HasPrefix(r, "200 ") {
+		t.Errorf("NOOP with telnet IAC over TLS: got %q, want 200", r)
 	}
 }

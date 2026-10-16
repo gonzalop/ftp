@@ -1,7 +1,7 @@
 package server
 
 import (
-	"bufio"
+	"bytes"
 	"crypto/tls"
 	"io"
 	"net"
@@ -24,23 +24,37 @@ func (s *session) handleAUTH(arg string) {
 	s.reply(234, "AUTH TLS successful.")
 
 	// Upgrade connection
-	conn := net.Conn(s.conn)
 	s.mu.Lock()
-	if s.reader.Buffered() > 0 {
+	defer s.mu.Unlock()
+
+	// Bytes the client sent after AUTH TLS (the start of its TLS handshake)
+	// may already sit in our buffers: first in s.reader, then, later in the
+	// stream, in the telnet reader's buffer.
+	var prefix []byte
+	if n := s.reader.Buffered(); n > 0 {
+		b, _ := s.reader.Peek(n)
+		prefix = append(prefix, b...)
+	}
+	if n := s.tnet.reader.Buffered(); n > 0 {
+		b, _ := s.tnet.reader.Peek(n)
+		prefix = append(prefix, b...)
+	}
+	conn := net.Conn(s.conn)
+	if len(prefix) > 0 {
 		conn = &sharedconn.PrefixedConn{
 			Conn: s.conn,
-			R:    io.MultiReader(io.LimitReader(s.reader, int64(s.reader.Buffered())), s.conn),
+			R:    io.MultiReader(bytes.NewReader(prefix), s.conn),
 		}
 	}
-	s.mu.Unlock()
 
 	tlsConn := tls.Server(conn, s.server.tlsConfig)
 
-	s.mu.Lock()
+	// Keep the telnet filter on the encrypted connection, reusing the
+	// pooled readers and writer.
 	s.conn = tlsConn
-	s.reader = bufio.NewReader(tlsConn)
-	s.writer = bufio.NewWriter(tlsConn)
-	s.mu.Unlock()
+	s.tnet.Reset(tlsConn)
+	s.reader.Reset(s.tnet)
+	s.writer.Reset(tlsConn)
 }
 
 func (s *session) handlePROT(arg string) {
