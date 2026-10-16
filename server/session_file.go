@@ -31,26 +31,32 @@ func (s *session) handleCWD(path string) {
 	}
 
 	// Check for .message file if enabled
+	var b []byte
 	if s.server.enableDirMessage {
 		f, err := s.fs.OpenFile(".message", 0)
 		if err == nil {
 			// Read up to 2KB to avoid excessive memory usage
 			lr := io.LimitReader(f, 2048)
-			b, _ := io.ReadAll(lr)
+			b, _ = io.ReadAll(lr)
 			f.Close()
-			if len(b) > 0 {
-				fmt.Fprintf(s.writer, "250-Message:\r\n")
-				// Trim trailing newlines to avoid an extra empty line at the end
-				msg := strings.TrimRight(string(b), "\r\n")
-				lines := strings.SplitSeq(msg, "\n")
-				for line := range lines {
-					line = strings.TrimRight(line, "\r")
-					fmt.Fprintf(s.writer, "250-%s\r\n", line)
-				}
-			}
 		}
 	}
-	s.reply(250, "Directory successfully changed.")
+
+	// The message lines and the final reply are written under one lock.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(b) > 0 {
+		fmt.Fprintf(s.writer, "250-Message:\r\n")
+		// Trim trailing newlines to avoid an extra empty line at the end
+		msg := strings.TrimRight(string(b), "\r\n")
+		lines := strings.SplitSeq(msg, "\n")
+		for line := range lines {
+			line = strings.TrimRight(line, "\r")
+			fmt.Fprintf(s.writer, "250-%s\r\n", line)
+		}
+	}
+	fmt.Fprintf(s.writer, "250 Directory successfully changed.\r\n")
+	s.writer.Flush()
 }
 
 func (s *session) handleCDUP(_ string) {

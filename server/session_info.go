@@ -40,6 +40,9 @@ func (s *session) handleMDTM(path string) {
 }
 
 func (s *session) handleFEAT(_ string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if _, err := s.writer.WriteString("211-Features:\r\n"); err != nil {
 		return
 	}
@@ -203,6 +206,9 @@ func (s *session) handleMLST(arg string) {
 		s.reply(550, "Could not get file info.")
 		return
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	_, _ = s.writer.WriteString("250- Listing follows\r\n")
 	if err := s.writer.WriteByte(' '); err != nil {

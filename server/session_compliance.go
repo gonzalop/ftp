@@ -76,6 +76,9 @@ func (s *session) handleSTAT(arg string) {
 	}
 
 	// Return connection status using multi-line response
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	fmt.Fprintf(s.writer, "211-Status:\r\n")
 
 	if s.isLoggedIn {
@@ -86,10 +89,7 @@ func (s *session) handleSTAT(arg string) {
 
 	fmt.Fprintf(s.writer, " TYPE: ASCII, FORM: Nonprint; STRUcture: File; transfer MODE: Stream\r\n")
 
-	s.mu.Lock()
-	hasPasv := s.pasvList != nil
-	s.mu.Unlock()
-	if hasPasv {
+	if s.pasvList != nil {
 		fmt.Fprintf(s.writer, " Passive mode enabled\r\n")
 	} else if s.activeIP != "" {
 		fmt.Fprintf(s.writer, " Active mode: %s:%d\r\n", s.activeIP, s.activePort)
@@ -109,6 +109,9 @@ func (s *session) handleHELP(arg string) {
 	}
 
 	// List all supported commands using multi-line response
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	fmt.Fprintf(s.writer, "214-The following commands are supported:\r\n")
 	fmt.Fprintf(s.writer, " USER PASS QUIT ACCT\r\n")
 	fmt.Fprintf(s.writer, " CWD XCWD CDUP XCUP PWD XPWD MKD XMKD RMD XRMD\r\n")
