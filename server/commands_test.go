@@ -266,3 +266,35 @@ func TestListPathWithSpaces(t *testing.T) {
 		t.Errorf("List(\"My Documents\") = %v, want [inside.txt]", entries)
 	}
 }
+
+func TestListShowsYearForOldFiles(t *testing.T) {
+	t.Parallel()
+	c, rootDir, teardown := setupTestServer(t, false)
+	defer teardown()
+
+	old := filepath.Join(rootDir, "old file.txt")
+	fatalIfErr(t, os.WriteFile(old, nil, 0644), "write file")
+	mtime := time.Date(2020, time.March, 4, 5, 6, 0, 0, time.Local)
+	fatalIfErr(t, os.Chtimes(old, mtime, mtime), "chtimes")
+	fatalIfErr(t, os.WriteFile(filepath.Join(rootDir, "new.txt"), nil, 0644), "write file")
+
+	entries, err := c.List("")
+	fatalIfErr(t, err, "List")
+	for _, e := range entries {
+		switch e.Name {
+		case "old file.txt":
+			if !strings.Contains(e.Raw, "Mar 04  2020") {
+				t.Errorf("old file: got %q, want the year 2020", e.Raw)
+			}
+		case "new.txt":
+			if strings.Contains(e.Raw, "  20") {
+				t.Errorf("new file: got %q, want a time, not a year", e.Raw)
+			}
+		default:
+			t.Errorf("unexpected entry %+v", e)
+		}
+	}
+	if len(entries) != 2 {
+		t.Errorf("got %d entries, want 2", len(entries))
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 )
 
 func (s *session) handlePWD(_ string) {
@@ -184,9 +185,17 @@ func (s *session) listRecursive(w io.Writer, path string, depth int) error {
 }
 
 func (s *session) printListEntry(w io.Writer, entry os.FileInfo) {
+	// Like ls, show the time for files from the last six months and the year
+	// otherwise; clients read a date without a year as within that window.
+	mod := entry.ModTime()
+	dateFormat := "Jan 02 15:04"
+	if age := time.Since(mod); age > 182*24*time.Hour || age < -time.Hour {
+		dateFormat = "Jan 02  2006"
+	}
+
 	// Constructing a Unix-style listing string.
 	sStr := fmt.Sprintf("%s 1 owner group %d %s %s\r\n",
-		entry.Mode().String(), entry.Size(), entry.ModTime().Format("Jan 02 15:04"), entry.Name())
+		entry.Mode().String(), entry.Size(), mod.Format(dateFormat), entry.Name())
 	fmt.Fprint(w, sStr)
 }
 
