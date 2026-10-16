@@ -134,13 +134,7 @@ var commandHandlers = map[string]func(*session, string){
 // validateActiveIP ensures the data connection target matches the control connection source.
 // This prevents FTP bounce attacks.
 func (s *session) validateActiveIP(ip net.IP) bool {
-	remoteAddr := s.conn.RemoteAddr().String()
-	host, _, err := net.SplitHostPort(remoteAddr)
-	if err != nil {
-		host = remoteAddr // Fallback
-	}
-
-	remoteIP := net.ParseIP(host)
+	remoteIP := net.ParseIP(s.remoteIP)
 	if remoteIP == nil {
 		return false
 	}
@@ -167,36 +161,18 @@ func (s *session) redactIP(ip string) string {
 
 // rateLimitReader wraps a reader with bandwidth limiting if configured.
 // Applies both global and per-user limits (most restrictive wins).
+// ratelimit.New returns nil for no limit, and NewReader then returns r as is.
 func (s *session) rateLimitReader(r io.Reader) io.Reader {
-	// Apply per-user limit
-	if s.server.bandwidthLimitPerUser > 0 {
-		limiter := ratelimit.New(s.server.bandwidthLimitPerUser)
-		r = ratelimit.NewReader(r, limiter)
-	}
-
-	// Apply global limit (chains with per-user if both set)
-	if s.server.globalLimiter != nil {
-		r = ratelimit.NewReader(r, s.server.globalLimiter)
-	}
-
-	return r
+	r = ratelimit.NewReader(r, ratelimit.New(s.server.bandwidthLimitPerUser))
+	return ratelimit.NewReader(r, s.server.globalLimiter)
 }
 
 // rateLimitWriter wraps a writer with bandwidth limiting if configured.
 // Applies both global and per-user limits (most restrictive wins).
+// ratelimit.New returns nil for no limit, and NewWriter then returns w as is.
 func (s *session) rateLimitWriter(w io.Writer) io.Writer {
-	// Apply per-user limit
-	if s.server.bandwidthLimitPerUser > 0 {
-		limiter := ratelimit.New(s.server.bandwidthLimitPerUser)
-		w = ratelimit.NewWriter(w, limiter)
-	}
-
-	// Apply global limit (chains with per-user if both set)
-	if s.server.globalLimiter != nil {
-		w = ratelimit.NewWriter(w, s.server.globalLimiter)
-	}
-
-	return w
+	w = ratelimit.NewWriter(w, ratelimit.New(s.server.bandwidthLimitPerUser))
+	return ratelimit.NewWriter(w, s.server.globalLimiter)
 }
 
 // newSession creates a new session.
@@ -205,11 +181,7 @@ func newSession(server *Server, conn net.Conn) *session {
 	sessionID := generateSessionID()
 
 	// Extract remote IP
-	remoteAddr := conn.RemoteAddr().String()
-	remoteIP, _, err := net.SplitHostPort(remoteAddr)
-	if err != nil {
-		remoteIP = remoteAddr // Fallback to full address
-	}
+	remoteIP := remoteHost(conn)
 
 	tr := telnetReaderPool.Get().(*telnetReader)
 	tr.Reset(conn)
@@ -585,10 +557,7 @@ func (s *session) connPassive() (net.Conn, error) {
 
 	// Verify that the data connection remote IP matches the control connection remote IP to prevent hijacking.
 	// We allow loopback addresses to differ (e.g. 127.0.0.1 and ::1) since they are both local to the host.
-	dataIPStr, _, errSplit := net.SplitHostPort(conn.RemoteAddr().String())
-	if errSplit != nil {
-		dataIPStr = conn.RemoteAddr().String()
-	}
+	dataIPStr := remoteHost(conn)
 	dataIP := net.ParseIP(dataIPStr)
 	controlIP := net.ParseIP(s.remoteIP)
 	if dataIP != nil && controlIP != nil {

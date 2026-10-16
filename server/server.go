@@ -468,12 +468,7 @@ func (s *Server) trackConnection(conn net.Conn, add, perIP bool) bool {
 
 		// Track per-IP for control connections
 		if perIP && s.maxConnectionsPerIP > 0 {
-			remoteAddr := conn.RemoteAddr().String()
-			ip, _, err := net.SplitHostPort(remoteAddr)
-			if err != nil {
-				ip = remoteAddr
-			}
-
+			ip := remoteHost(conn)
 			s.connsByIPMu.Lock()
 			s.connsByIP[ip]++
 			s.connsByIPMu.Unlock()
@@ -485,12 +480,7 @@ func (s *Server) trackConnection(conn net.Conn, add, perIP bool) bool {
 
 	// Untrack per-IP for control connections
 	if perIP && s.maxConnectionsPerIP > 0 {
-		remoteAddr := conn.RemoteAddr().String()
-		ip, _, err := net.SplitHostPort(remoteAddr)
-		if err != nil {
-			ip = remoteAddr
-		}
-
+		ip := remoteHost(conn)
 		s.connsByIPMu.Lock()
 		s.connsByIP[ip]--
 		if s.connsByIP[ip] <= 0 {
@@ -499,6 +489,16 @@ func (s *Server) trackConnection(conn net.Conn, add, perIP bool) bool {
 		s.connsByIPMu.Unlock()
 	}
 	return true
+}
+
+// remoteHost returns the host part of conn's remote address, or the whole
+// address if it has no port.
+func remoteHost(conn net.Conn) string {
+	addr := conn.RemoteAddr().String()
+	if host, _, err := net.SplitHostPort(addr); err == nil {
+		return host
+	}
+	return addr
 }
 
 // trackingConn wraps a net.Conn to track its lifetime in the server.
@@ -534,10 +534,8 @@ func (s *Server) handleSession(conn net.Conn) {
 	// Check global connection limit
 	if s.maxConnections > 0 && n > int32(s.maxConnections) {
 		// Security audit: connection limit reached
-		remoteAddr := conn.RemoteAddr().String()
-		ip, _, _ := net.SplitHostPort(remoteAddr)
 		s.logger.Warn("connection_rejected",
-			"remote_ip", ip,
+			"remote_ip", remoteHost(conn),
 			"reason", "global_limit_reached",
 			"limit", s.maxConnections,
 		)
@@ -553,14 +551,7 @@ func (s *Server) handleSession(conn net.Conn) {
 
 	// Check per-IP connection limit
 	if s.maxConnectionsPerIP > 0 {
-		// Extract IP address (remove port)
-		remoteAddr := conn.RemoteAddr().String()
-		ip, _, err := net.SplitHostPort(remoteAddr)
-		if err != nil {
-			// If we can't parse the address, use the whole thing
-			ip = remoteAddr
-		}
-
+		ip := remoteHost(conn)
 		s.connsByIPMu.Lock()
 		currentCount := s.connsByIP[ip]
 		if currentCount > int32(s.maxConnectionsPerIP) {

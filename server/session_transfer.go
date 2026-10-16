@@ -330,12 +330,10 @@ func (s *session) listenPassive() (net.Listener, error) {
 	return s.server.listenerFactory.Listen("tcp", ":0")
 }
 
-func (s *session) handlePASV(_ string) {
-	if !s.isLoggedIn {
-		s.reply(530, "Please login with USER and PASS.")
-		return
-	}
-
+// openPassive replaces the passive listener with a new one, closed after
+// passiveTimeout if no data connection uses it. It replies 425 and returns
+// nil on failure.
+func (s *session) openPassive() net.Listener {
 	s.mu.Lock()
 	if s.pasvList != nil {
 		s.pasvList.Close()
@@ -345,22 +343,34 @@ func (s *session) handlePASV(_ string) {
 	ln, err := s.listenPassive()
 	if err != nil {
 		s.reply(425, "Can't open passive connection.")
-		return
+		return nil
 	}
 	s.mu.Lock()
 	s.pasvList = ln
 	s.mu.Unlock()
 
-	// Spawn a timer goroutine to close the listener after passiveTimeout to prevent resource exhaustion
-	go func(ln net.Listener) {
-		time.Sleep(s.server.passiveTimeout)
+	// Close the listener after passiveTimeout to prevent resource exhaustion
+	time.AfterFunc(s.server.passiveTimeout, func() {
 		s.mu.Lock()
+		defer s.mu.Unlock()
 		if s.pasvList == ln {
 			s.pasvList = nil
 			ln.Close()
 		}
-		s.mu.Unlock()
-	}(ln)
+	})
+	return ln
+}
+
+func (s *session) handlePASV(_ string) {
+	if !s.isLoggedIn {
+		s.reply(530, "Please login with USER and PASS.")
+		return
+	}
+
+	ln := s.openPassive()
+	if ln == nil {
+		return
+	}
 
 	_, portStr, _ := net.SplitHostPort(ln.Addr().String())
 	port, _ := strconv.Atoi(portStr)
@@ -421,31 +431,10 @@ func (s *session) handleEPSV(_ string) {
 		return
 	}
 
-	s.mu.Lock()
-	if s.pasvList != nil {
-		s.pasvList.Close()
-	}
-	s.mu.Unlock()
-
-	ln, err := s.listenPassive()
-	if err != nil {
-		s.reply(425, "Can't open passive connection.")
+	ln := s.openPassive()
+	if ln == nil {
 		return
 	}
-	s.mu.Lock()
-	s.pasvList = ln
-	s.mu.Unlock()
-
-	// Spawn a timer goroutine to close the listener after passiveTimeout to prevent resource exhaustion
-	go func(ln net.Listener) {
-		time.Sleep(s.server.passiveTimeout)
-		s.mu.Lock()
-		if s.pasvList == ln {
-			s.pasvList = nil
-			ln.Close()
-		}
-		s.mu.Unlock()
-	}(ln)
 
 	_, portStr, _ := net.SplitHostPort(ln.Addr().String())
 	s.reply(229, fmt.Sprintf("Entering Extended Passive Mode (|||%s|)", portStr))
