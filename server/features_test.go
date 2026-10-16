@@ -566,3 +566,35 @@ func rawReadResponse(c *textConn) (int, string, error) {
 	_, _ = fmt.Sscanf(line, "%d", &code)
 	return code, line, nil
 }
+
+func TestABORKeepsSessionAlive(t *testing.T) {
+	t.Parallel()
+	rootDir := t.TempDir()
+	fatalIfErr(t, os.WriteFile(filepath.Join(rootDir, "big.bin"), make([]byte, 1024*1024), 0644), "write file")
+	driver, err := NewFSDriver(rootDir)
+	fatalIfErr(t, err, "NewFSDriver")
+	// Slow transfers down so the RETR is still running when ABOR arrives.
+	_, addr := startRawServer(t, driver, WithBandwidthLimit(0, 256*1024))
+	c := dialRaw(t, addr)
+
+	// ABOR with no transfer must be answered, even before login.
+	if r := c.cmd("ABOR"); !strings.HasPrefix(r, "226 ") {
+		t.Fatalf("idle ABOR: got %q, want 226", r)
+	}
+	c.cmd("USER ftp")
+	c.cmd("PASS x")
+
+	c.epsv()
+	if r := c.cmd("RETR big.bin"); !strings.HasPrefix(r, "150 ") {
+		t.Fatalf("RETR: got %q, want 150", r)
+	}
+	// The ABOR reply (226) and the RETR reply (426) may arrive in either order.
+	codes := c.cmd("ABOR")[:3] + "," + c.reply()[:3]
+	if codes != "226,426" && codes != "426,226" {
+		t.Fatalf("ABOR during transfer: got codes %s, want 226 and 426", codes)
+	}
+
+	if r := c.cmd("NOOP"); !strings.HasPrefix(r, "200 ") {
+		t.Fatalf("NOOP after ABOR: got %q, want 200", r)
+	}
+}

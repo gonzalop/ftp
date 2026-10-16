@@ -650,26 +650,29 @@ func (s *session) wrapDataConn(conn net.Conn) (net.Conn, error) {
 }
 
 func (s *session) handleABOR(_ string) {
+	// s.mu must be released before replying: reply takes it too.
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	busy := s.busy
+	if busy {
+		// Close data connection to interrupt the background transfer goroutine.
+		if s.dataConn != nil {
+			s.dataConn.Close()
+		}
 
-	if !s.busy {
+		// Signal the transfer context to cancel.
+		if s.transferCancel != nil {
+			s.transferCancel()
+		}
+	}
+	s.mu.Unlock()
+
+	if !busy {
 		s.reply(226, "ABOR command successful; no transfer in progress.")
 		return
 	}
 
 	// Transfer is in progress.
 	s.server.logger.Info("transfer_abort_requested", "session_id", s.sessionID)
-
-	// Close data connection to interrupt the background transfer goroutine.
-	if s.dataConn != nil {
-		s.dataConn.Close()
-	}
-
-	// Signal the transfer context to cancel.
-	if s.transferCancel != nil {
-		s.transferCancel()
-	}
 
 	// Per RFC 959, the server should send a 426 reply for the original
 	// transfer command, followed by a 226 reply for the ABOR command.
