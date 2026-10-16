@@ -290,6 +290,12 @@ func (p *CompositeParser) Parse(line string) *Entry {
 		}
 	}
 
+	// Unix servers start LIST output with a "total <blocks>" summary line.
+	// It is not a file.
+	if fields := strings.Fields(trimmed); len(fields) == 2 && fields[0] == "total" {
+		return nil
+	}
+
 	// Fallback
 	slog.Debug("Unable to parse LIST line, unknown format", "raw", line)
 	return &Entry{

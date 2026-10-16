@@ -254,3 +254,16 @@ func TestCustomParser(t *testing.T) {
 		t.Errorf("Expected custom, got %s", entry.Name)
 	}
 }
+
+func TestParseListLine_SkipsTotal(t *testing.T) {
+	for _, line := range []string{"total 12", "total 4.0K", "  total 0"} {
+		if e := parseListLine(line, nil); e != nil {
+			t.Errorf("parseListLine(%q) = %+v, want nil", line, e)
+		}
+	}
+	// A real entry named "total" is still parsed.
+	e := parseListLine("-rw-r--r-- 1 owner group 5 Jan 02 15:04 total", nil)
+	if e == nil || e.Name != "total" || e.Type != "file" {
+		t.Errorf("entry named total: got %+v", e)
+	}
+}
