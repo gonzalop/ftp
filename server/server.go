@@ -99,7 +99,7 @@ type Server struct {
 	connsByIPMu sync.Mutex
 
 	// nextPassivePort tracks the last used passive port to implement round-robin selection.
-	nextPassivePort int32
+	nextPassivePort atomic.Uint32
 
 	// Privacy-aware logging
 	pathRedactor PathRedactor // Custom path redaction function (optional)

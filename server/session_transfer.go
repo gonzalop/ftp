@@ -8,7 +8,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 )
 
@@ -311,14 +310,15 @@ func (s *session) listenPassive() (net.Listener, error) {
 	if settings != nil && settings.PasvMinPort > 0 && settings.PasvMaxPort >= settings.PasvMinPort {
 		minPort := settings.PasvMinPort
 		maxPort := settings.PasvMaxPort
-		rangeLen := int32(maxPort - minPort + 1)
+		rangeLen := uint32(maxPort - minPort + 1)
 
-		// Get a starting offset using round-robin
-		startOffset := atomic.AddInt32(&s.server.nextPassivePort, 1)
+		// Get a starting offset using round-robin. Unsigned, so the counter
+		// wraps around without producing negative offsets.
+		startOffset := s.server.nextPassivePort.Add(1)
 
 		for i := range rangeLen {
 			offset := (startOffset + i) % rangeLen
-			port := int(int32(minPort) + offset)
+			port := minPort + int(offset)
 
 			ln, err := s.server.listenerFactory.Listen("tcp", fmt.Sprintf(":%d", port))
 			if err == nil {

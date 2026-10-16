@@ -1,6 +1,8 @@
 package server
 
 import (
+	"errors"
+	"math"
 	"net"
 	"strconv"
 	"strings"
@@ -94,5 +96,34 @@ func TestPasvPortRange(t *testing.T) {
 
 	if port < minPort || port > maxPort {
 		t.Errorf("PASV port %d is out of range [%d, %d]", port, minPort, maxPort)
+	}
+}
+
+// recordingListenerFactory fails every Listen and records the addresses tried.
+type recordingListenerFactory struct {
+	addrs []string
+}
+
+func (f *recordingListenerFactory) Listen(_, address string) (net.Listener, error) {
+	f.addrs = append(f.addrs, address)
+	return nil, errors.New("port in use")
+}
+
+func TestPasvPortRange_CounterWraparound(t *testing.T) {
+	t.Parallel()
+	factory := &recordingListenerFactory{}
+	srv := &Server{listenerFactory: factory}
+	s := &session{server: srv, fs: &fsContext{settings: &Settings{PasvMinPort: 30000, PasvMaxPort: 30009}}}
+
+	// Near the wrap point of a 32-bit counter.
+	srv.nextPassivePort.Store(math.MaxInt32 - 3)
+	for range 3 {
+		_, _ = s.listenPassive()
+	}
+	for _, addr := range factory.addrs {
+		port, err := strconv.Atoi(strings.TrimPrefix(addr, ":"))
+		if err != nil || port < 30000 || port > 30009 {
+			t.Fatalf("listened on %q, outside the range 30000-30009", addr)
+		}
 	}
 }
