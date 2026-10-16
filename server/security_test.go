@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -205,5 +206,67 @@ func TestUnauthenticatedCommands(t *testing.T) {
 		if resp.Code != 530 {
 			t.Errorf("Expected 530 for unauthenticated %s, got %d %s", tc.cmd, resp.Code, resp.Message)
 		}
+	}
+}
+
+// closeCountingDriver wraps a Driver and counts open ClientContexts.
+type closeCountingDriver struct {
+	Driver
+	open atomic.Int32
+}
+
+type closeCountingContext struct {
+	ClientContext
+	d *closeCountingDriver
+}
+
+func (d *closeCountingDriver) Authenticate(user, pass, host string, ip net.IP) (ClientContext, error) {
+	ctx, err := d.Driver.Authenticate(user, pass, host, ip)
+	if err != nil {
+		return nil, err
+	}
+	d.open.Add(1)
+	return &closeCountingContext{ClientContext: ctx, d: d}, nil
+}
+
+func (c *closeCountingContext) Close() error {
+	c.d.open.Add(-1)
+	return c.ClientContext.Close()
+}
+
+func TestReloginReleasesContext(t *testing.T) {
+	t.Parallel()
+	rootDir := t.TempDir()
+	fs, err := NewFSDriver(rootDir, WithAuthenticator(func(user, pass, _ string, _ net.IP) (string, bool, error) {
+		if pass != "good" {
+			return "", false, os.ErrPermission
+		}
+		return rootDir, false, nil
+	}))
+	fatalIfErr(t, err, "NewFSDriver")
+	driver := &closeCountingDriver{Driver: fs}
+	_, addr := startRawServer(t, driver)
+	c := dialRaw(t, addr)
+
+	for range 5 {
+		c.cmd("USER alice")
+		if r := c.cmd("PASS good"); !strings.HasPrefix(r, "230 ") {
+			t.Fatalf("PASS: got %q, want 230", r)
+		}
+	}
+	if n := driver.open.Load(); n != 1 {
+		t.Errorf("open contexts after 5 logins: got %d, want 1", n)
+	}
+
+	// A failed login must end the previous one.
+	c.cmd("USER mallory")
+	if r := c.cmd("PASS bad"); !strings.HasPrefix(r, "530 ") {
+		t.Fatalf("bad PASS: got %q, want 530", r)
+	}
+	if r := c.cmd("PWD"); !strings.HasPrefix(r, "530 ") {
+		t.Errorf("PWD after failed login: got %q, want 530", r)
+	}
+	if n := driver.open.Load(); n != 0 {
+		t.Errorf("open contexts after failed login: got %d, want 0", n)
 	}
 }

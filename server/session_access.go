@@ -7,13 +7,25 @@ import (
 	"time"
 )
 
+// logout ends the current login, if any, and releases its ClientContext.
+func (s *session) logout() {
+	if s.fs != nil {
+		s.fs.Close()
+		s.fs = nil
+	}
+	s.isLoggedIn = false
+	s.renameFrom = ""
+}
+
 func (s *session) handleUSER(user string) error {
+	s.logout()
 	s.user = user
 	s.reply(331, "User name okay, need password.")
 	return nil
 }
 
 func (s *session) handlePASS(pass string) error {
+	s.logout()
 	// Parse remote IP string to net.IP
 	remoteIP := net.ParseIP(s.remoteIP)
 	ctx, err := s.server.driver.Authenticate(s.user, pass, s.host, remoteIP)
