@@ -645,7 +645,7 @@ func (s *session) wrapDataConn(conn net.Conn) (net.Conn, error) {
 	}
 
 	// Track data connection
-	s.server.trackConnection(conn, true)
+	s.server.trackConnection(conn, true, false)
 	return &trackingConn{Conn: conn, server: s.server}, nil
 }
 

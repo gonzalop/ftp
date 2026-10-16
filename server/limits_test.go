@@ -3,7 +3,10 @@ package server
 import (
 	"bufio"
 	"context"
+	"io"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -295,5 +298,50 @@ func TestPassiveTimeout(t *testing.T) {
 	if err == nil {
 		conn.Close()
 		t.Fatal("expected connection to passive port to fail after timeout, but it succeeded")
+	}
+}
+
+func TestPerIPCountSurvivesTransfers(t *testing.T) {
+	t.Parallel()
+	rootDir := t.TempDir()
+	fatalIfErr(t, os.WriteFile(filepath.Join(rootDir, "f.txt"), []byte("hello"), 0644), "write file")
+	driver, err := NewFSDriver(rootDir)
+	fatalIfErr(t, err, "NewFSDriver")
+	srv, addr := startRawServer(t, driver, WithMaxConnections(0, 5))
+
+	ipCount := func() int32 {
+		srv.connsByIPMu.Lock()
+		defer srv.connsByIPMu.Unlock()
+		return srv.connsByIP["127.0.0.1"]
+	}
+
+	dialRaw(t, addr) // stays open for the whole test
+
+	// Each session downloads a file and quits. Its data connection is
+	// closed more than once and must not lower the count twice.
+	for range 3 {
+		c := dialRaw(t, addr)
+		c.cmd("USER ftp")
+		c.cmd("PASS x")
+		dc := c.epsv()
+		c.cmd("RETR f.txt")
+		_, _ = io.ReadAll(dc)
+		c.reply()
+		c.cmd("QUIT")
+		c.conn.Close()
+	}
+
+	// Wait until only the first session's connection is still tracked.
+	openConns := func() int {
+		srv.mu.Lock()
+		defer srv.mu.Unlock()
+		return len(srv.conns)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for openConns() != 1 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if n := ipCount(); n != 1 {
+		t.Errorf("per-IP count with one open session: got %d, want 1", n)
 	}
 }

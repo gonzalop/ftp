@@ -432,18 +432,20 @@ func (s *Server) Serve(l net.Listener) error {
 
 // handleConnection handles a new client connection.
 func (s *Server) handleConnection(conn net.Conn) {
-	if !s.trackConnection(conn, true) {
+	if !s.trackConnection(conn, true, true) {
 		conn.Close()
 		return
 	}
-	defer s.trackConnection(conn, false)
+	defer s.trackConnection(conn, false, true)
 
 	// Create a new session for this connection
 	s.handleSession(conn)
 }
 
-// trackConnection returns false if we're shutting down.
-func (s *Server) trackConnection(conn net.Conn, add bool) bool {
+// trackConnection adds or removes conn from the set closed on Shutdown.
+// Control connections (perIP true) also count toward the per-IP limit.
+// It returns false if we're shutting down.
+func (s *Server) trackConnection(conn net.Conn, add, perIP bool) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -455,8 +457,8 @@ func (s *Server) trackConnection(conn net.Conn, add bool) bool {
 	if add {
 		s.conns[conn] = struct{}{}
 
-		// Track per-IP for data connections
-		if s.maxConnectionsPerIP > 0 {
+		// Track per-IP for control connections
+		if perIP && s.maxConnectionsPerIP > 0 {
 			remoteAddr := conn.RemoteAddr().String()
 			ip, _, err := net.SplitHostPort(remoteAddr)
 			if err != nil {
@@ -472,8 +474,8 @@ func (s *Server) trackConnection(conn net.Conn, add bool) bool {
 	// remove
 	delete(s.conns, conn)
 
-	// Untrack per-IP for data connections
-	if s.maxConnectionsPerIP > 0 {
+	// Untrack per-IP for control connections
+	if perIP && s.maxConnectionsPerIP > 0 {
 		remoteAddr := conn.RemoteAddr().String()
 		ip, _, err := net.SplitHostPort(remoteAddr)
 		if err != nil {
@@ -493,7 +495,8 @@ func (s *Server) trackConnection(conn net.Conn, add bool) bool {
 // trackingConn wraps a net.Conn to track its lifetime in the server.
 type trackingConn struct {
 	net.Conn
-	server *Server
+	server    *Server
+	closeOnce sync.Once
 }
 
 func (c *trackingConn) ReadFrom(r io.Reader) (int64, error) {
@@ -507,7 +510,8 @@ func (c *trackingConn) WriteTo(w io.Writer) (int64, error) {
 }
 
 func (c *trackingConn) Close() error {
-	c.server.trackConnection(c.Conn, false)
+	// Close may be called more than once (transfer goroutine, ABOR, session close).
+	c.closeOnce.Do(func() { c.server.trackConnection(c.Conn, false, false) })
 	return c.Conn.Close()
 }
 
