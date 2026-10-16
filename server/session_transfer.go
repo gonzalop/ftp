@@ -59,6 +59,13 @@ func (s *session) handleRETR(path string) {
 		}
 	}
 
+	// Reply 150 before opening the data connection (RFC 959): with PROT P,
+	// clients start the TLS handshake only after this reply.
+	if s.restartOffset > 0 {
+		s.reply(150, fmt.Sprintf("Opening data connection for RETR (restarting at %d).", s.restartOffset))
+	} else {
+		s.reply(150, "Opening data connection for RETR.")
+	}
 	conn, err := s.connData()
 	if err != nil {
 		file.Close()
@@ -66,12 +73,6 @@ func (s *session) handleRETR(path string) {
 		return
 	}
 	s.dataConn = conn // Store for ABOR
-
-	if s.restartOffset > 0 {
-		s.reply(150, fmt.Sprintf("Opening data connection for RETR (restarting at %d).", s.restartOffset))
-	} else {
-		s.reply(150, "Opening data connection for RETR.")
-	}
 
 	// Reset offset after use
 	offset := s.restartOffset
@@ -193,6 +194,9 @@ func (s *session) handleSTOR(path string) {
 		}
 	}
 
+	// Reply 150 before opening the data connection (RFC 959): with PROT P,
+	// clients start the TLS handshake only after this reply.
+	s.reply(150, "Opening data connection for STOR.")
 	conn, err := s.connData()
 	if err != nil {
 		file.Close()
@@ -200,8 +204,6 @@ func (s *session) handleSTOR(path string) {
 		return
 	}
 	s.dataConn = conn
-
-	s.reply(150, "Opening data connection for STOR.")
 
 	// Reset offset after use
 	s.restartOffset = 0
@@ -297,6 +299,9 @@ func (s *session) handleAPPE(path string) {
 		return
 	}
 
+	// Reply 150 before opening the data connection (RFC 959): with PROT P,
+	// clients start the TLS handshake only after this reply.
+	s.reply(150, "Opening data connection for APPE.")
 	conn, err := s.connData()
 	if err != nil {
 		file.Close()
@@ -304,8 +309,6 @@ func (s *session) handleAPPE(path string) {
 		return
 	}
 	s.dataConn = conn
-
-	s.reply(150, "Opening data connection for APPE.")
 
 	ctx := s.startTransfer()
 
@@ -368,6 +371,9 @@ func (s *session) handleSTOU(_ string) {
 		return
 	}
 
+	// Reply 150 before opening the data connection (RFC 959): with PROT P,
+	// clients start the TLS handshake only after this reply.
+	s.reply(150, fmt.Sprintf("FILE: %s", path))
 	conn, err := s.connData()
 	if err != nil {
 		file.Close()
@@ -375,8 +381,6 @@ func (s *session) handleSTOU(_ string) {
 		return
 	}
 	s.dataConn = conn
-
-	s.reply(150, fmt.Sprintf("FILE: %s", path))
 
 	ctx := s.startTransfer()
 

@@ -1,16 +1,19 @@
 package server
 
 import (
+	"bufio"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"io"
 	"math/big"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -223,4 +226,43 @@ func TestClientCertificateAuthentication(t *testing.T) {
 			t.Logf("Got expected error: %v", err)
 		}
 	})
+}
+
+// TestTLSDataAfter150 follows the order common clients (e.g. Python ftplib)
+// use with PROT P: send RETR, wait for 150, then start TLS on the data
+// connection.
+func TestTLSDataAfter150(t *testing.T) {
+	t.Parallel()
+	certPath, keyPath, _, _ := generateCert(t, false, nil, nil)
+	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	fatalIfErr(t, err, "load cert")
+	rootDir := t.TempDir()
+	fatalIfErr(t, os.WriteFile(filepath.Join(rootDir, "f.txt"), []byte("secret"), 0644), "write file")
+	driver, err := NewFSDriver(rootDir)
+	fatalIfErr(t, err, "NewFSDriver")
+	_, addr := startRawServer(t, driver, WithTLS(&tls.Config{Certificates: []tls.Certificate{cert}}))
+
+	c := dialRaw(t, addr)
+	c.cmd("AUTH TLS")
+	tlsConn := tls.Client(c.conn, &tls.Config{InsecureSkipVerify: true})
+	c.conn, c.r = tlsConn, bufio.NewReader(tlsConn)
+	c.cmd("USER ftp")
+	c.cmd("PASS x")
+	c.cmd("PBSZ 0")
+	c.cmd("PROT P")
+
+	dc := c.epsv()
+	if r := c.cmd("RETR f.txt"); !strings.HasPrefix(r, "150 ") {
+		t.Fatalf("RETR: got %q, want 150", r)
+	}
+	tlsData := tls.Client(dc, &tls.Config{InsecureSkipVerify: true})
+	_ = tlsData.SetDeadline(time.Now().Add(5 * time.Second))
+	data, err := io.ReadAll(tlsData)
+	fatalIfErr(t, err, "read TLS data")
+	if string(data) != "secret" {
+		t.Errorf("data: got %q, want %q", data, "secret")
+	}
+	if r := c.reply(); !strings.HasPrefix(r, "226 ") {
+		t.Errorf("after transfer: got %q, want 226", r)
+	}
 }

@@ -79,14 +79,15 @@ func (s *session) handleLIST(arg string) {
 	// 	// internal logic handles empty path as current dir
 	// }
 
+	// Reply 150 before opening the data connection (RFC 959): with PROT P,
+	// clients start the TLS handshake only after this reply.
+	s.reply(150, "Here comes the directory listing.")
 	conn, err := s.connData()
 	if err != nil {
 		s.reply(425, "Can't open data connection.")
 		return
 	}
 	defer conn.Close()
-
-	s.reply(150, "Here comes the directory listing.")
 
 	if recursive {
 		err = s.listRecursive(conn, path, 0)
@@ -202,14 +203,15 @@ func (s *session) handleNLST(arg string) {
 		return
 	}
 
+	// Reply 150 before opening the data connection (RFC 959): with PROT P,
+	// clients start the TLS handshake only after this reply.
+	s.reply(150, "Here comes the file list.")
 	conn, err := s.connData()
 	if err != nil {
 		s.reply(425, "Can't open data connection.")
 		return
 	}
 	defer conn.Close()
-
-	s.reply(150, "Here comes the file list.")
 
 	for _, entry := range entries {
 		fmt.Fprintf(conn, "%s\r\n", entry.Name())

@@ -119,14 +119,15 @@ func (s *session) handleMLSD(arg string) {
 	// MLSD [-R] [path]
 	path, recursive := parseListArgs(arg)
 
+	// Reply 150 before opening the data connection (RFC 959): with PROT P,
+	// clients start the TLS handshake only after this reply.
+	s.reply(150, "MLSD listing started.")
 	conn, err := s.connData()
 	if err != nil {
 		s.reply(425, "Can't open data connection.")
 		return
 	}
 	defer conn.Close()
-
-	s.reply(150, "MLSD listing started.")
 
 	if recursive {
 		err = s.mlsdRecursive(conn, path, path)
