@@ -293,3 +293,14 @@ func TestReadResponse_RFC2389(t *testing.T) {
 		t.Errorf("expected 6 lines, got %d", len(resp.Lines))
 	}
 }
+
+func TestSendCommand_RejectsCRLF(t *testing.T) {
+	t.Parallel()
+	// No connection: the command must be rejected before anything is sent.
+	c := &Client{}
+	for _, arg := range []string{"a.txt\r\nRMD important", "a.txt\nRMD x", "a.txt\rx"} {
+		if _, err := c.sendCommand("DELE", arg); err == nil {
+			t.Errorf("sendCommand(DELE, %q) succeeded, want error", arg)
+		}
+	}
+}

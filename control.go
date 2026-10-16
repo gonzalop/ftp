@@ -190,6 +190,12 @@ func (c *Client) sendCommand(command string, args ...string) (*Response, error) 
 		cmd = command
 	}
 
+	// A CR or LF would end the command early and let the rest of the
+	// argument run as a separate command.
+	if strings.ContainsAny(cmd, "\r\n") {
+		return nil, fmt.Errorf("invalid command %q: contains CR or LF", command)
+	}
+
 	// Log if debug is enabled
 	if c.logger != nil {
 		altCmd := cmd
