@@ -199,7 +199,7 @@ func (c *Client) sendCommand(command string, args ...string) (*Response, error) 
 	// Log if debug is enabled
 	if c.logger != nil {
 		altCmd := cmd
-		if strings.HasPrefix(cmd, "PASS ") {
+		if strings.HasPrefix(strings.ToUpper(cmd), "PASS ") {
 			altCmd = "PASS xxxx"
 		}
 		c.logger.Debug("ftp command", "cmd", altCmd)

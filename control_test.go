@@ -2,6 +2,9 @@ package ftp
 
 import (
 	"bufio"
+	"bytes"
+	"log/slog"
+	"net"
 	"strings"
 	"testing"
 )
@@ -302,5 +305,43 @@ func TestSendCommand_RejectsCRLF(t *testing.T) {
 		if _, err := c.sendCommand("DELE", arg); err == nil {
 			t.Errorf("sendCommand(DELE, %q) succeeded, want error", arg)
 		}
+	}
+}
+
+func TestSendCommand_RedactsPassInLog(t *testing.T) {
+	t.Parallel()
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	go func() {
+		r := bufio.NewReader(serverConn)
+		for range 2 {
+			_, _ = r.ReadString('\n')
+			_, _ = serverConn.Write([]byte("230 OK\r\n"))
+		}
+	}()
+
+	var logBuf bytes.Buffer
+	c := &Client{
+		conn:   clientConn,
+		reader: bufio.NewReader(clientConn),
+		logger: slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})),
+	}
+
+	if _, err := c.sendCommand("PASS", "s3cr3t!"); err != nil {
+		t.Fatalf("sendCommand(PASS) failed: %v", err)
+	}
+	if _, err := c.sendCommand("pass", "s3cr3t!"); err != nil {
+		t.Fatalf("sendCommand(pass) failed: %v", err)
+	}
+
+	logged := logBuf.String()
+	if strings.Contains(logged, "s3cr3t!") {
+		t.Errorf("password leaked in debug log: %s", logged)
+	}
+	if !strings.Contains(logged, "PASS xxxx") {
+		t.Errorf("expected redacted 'PASS xxxx' in debug log, got: %s", logged)
 	}
 }
