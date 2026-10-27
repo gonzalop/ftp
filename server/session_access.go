@@ -7,6 +7,10 @@ import (
 	"time"
 )
 
+// maxLoginFailures is how many failed PASS commands a connection may send
+// before it is closed.
+const maxLoginFailures = 3
+
 // logout ends the current login, if any, and releases its ClientContext.
 func (s *session) logout() {
 	if s.fs != nil {
@@ -46,6 +50,12 @@ func (s *session) handlePASS(pass string) error {
 		// Metrics collection
 		if s.server.metricsCollector != nil {
 			s.server.metricsCollector.RecordAuthentication(false, s.user)
+		}
+		s.loginFailures++
+		if s.loginFailures >= maxLoginFailures {
+			s.reply(421, "Too many failed login attempts; closing connection.")
+			s.quit = true
+			return nil
 		}
 		s.reply(530, "Login incorrect.")
 		return nil

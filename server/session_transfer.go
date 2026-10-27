@@ -163,7 +163,12 @@ func (s *session) runTransfer(op, path, msg string, file io.ReadWriteCloser, off
 
 	s.transferWG.Go(func() {
 		defer s.endTransfer(ctx)
-		defer file.Close()
+		fileClosed := false
+		defer func() {
+			if !fileClosed {
+				file.Close()
+			}
+		}()
 		defer conn.Close()
 
 		// Track transfer metrics
@@ -202,13 +207,32 @@ func (s *session) runTransfer(op, path, msg string, file io.ReadWriteCloser, off
 		// Check for cancellation
 		select {
 		case <-ctx.Done():
+			s.endTransfer(ctx)
 			s.reply(426, "Transfer aborted.")
 			return
 		default:
 		}
 
 		if err != nil {
+			s.endTransfer(ctx)
 			s.reply(426, "Connection closed; transfer aborted.")
+			return
+		}
+
+		// Close the file before replying 226: for STOR, a failed Close
+		// (flush or commit) means the upload did not complete.
+		fileClosed = true
+		if cerr := file.Close(); cerr != nil && op != "RETR" {
+			s.server.logger.Error("transfer_close_failed",
+				"session_id", s.sessionID,
+				"remote_ip", s.redactIP(s.remoteIP),
+				"user", s.user,
+				"operation", op,
+				"path", s.redactPath(path),
+				"error", cerr,
+			)
+			s.endTransfer(ctx)
+			s.reply(451, "Transfer aborted: could not save file.")
 			return
 		}
 		duration := time.Since(startTime)

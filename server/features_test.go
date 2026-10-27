@@ -343,7 +343,7 @@ func TestServerMiscFeatures(t *testing.T) {
 	fatalIfErr(t, os.Mkdir(filepath.Join(rootDir, "subdir"), 0755), "Failed to create subdir")
 	fatalIfErr(t, os.WriteFile(filepath.Join(rootDir, "subdir", "file2.txt"), []byte("content2"), 0644), "Failed to write file2.txt")
 
-	var logBuf bytes.Buffer
+	var logBuf safeBuffer // written by the transfer goroutine
 	driver, err := NewFSDriver(rootDir, WithAnonWrite(true))
 	fatalIfErr(t, err, "Failed to create FS driver")
 
@@ -375,7 +375,7 @@ func TestServerMiscFeatures(t *testing.T) {
 	testUmask(t)
 }
 
-func testAnonWriteAndTransferLog(t *testing.T, addr string, logBuf *bytes.Buffer) {
+func testAnonWriteAndTransferLog(t *testing.T, addr string, logBuf *safeBuffer) {
 	conn, err := rawLogin(addr, "anonymous", "test@example.com")
 	fatalIfErr(t, err, "rawLogin failed")
 	defer conn.Close()
@@ -403,7 +403,7 @@ func testAnonWriteAndTransferLog(t *testing.T, addr string, logBuf *bytes.Buffer
 
 	conn.Close()
 
-	time.Sleep(100 * time.Millisecond)
+	// The transfer log is written before the 226 reply.
 	logOutput := logBuf.String()
 	if !strings.Contains(logOutput, "upload.txt") {
 		t.Errorf("Log should contain filename 'upload.txt', got: %s", logOutput)
@@ -454,8 +454,8 @@ func testUmask(t *testing.T) {
 	}))
 	fatalIfErr(t, err, "Failed to create FS driver")
 
-	var logBuf bytes.Buffer
-	sUmask, err := NewServer(":0", WithDriver(driverUmask), WithTransferLog(&logBuf))
+	var umaskLog bytes.Buffer
+	sUmask, err := NewServer(":0", WithDriver(driverUmask), WithTransferLog(&umaskLog))
 	fatalIfErr(t, err, "Failed to create server")
 	lnUmask, err := net.Listen("tcp", ":0")
 	fatalIfErr(t, err, "Failed to listen")

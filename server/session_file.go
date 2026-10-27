@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -89,9 +90,11 @@ func (s *session) handleLIST(arg string) {
 		return
 	}
 	defer conn.Close()
+	// One write per entry would be one syscall (or TLS record) per entry.
+	w := bufio.NewWriter(conn)
 
 	if recursive {
-		err = s.listRecursive(conn, path, 0)
+		err = s.listRecursive(w, path, 0)
 	} else {
 		entries, listErr := s.fs.ListDir(path)
 		if listErr != nil {
@@ -112,7 +115,7 @@ func (s *session) handleLIST(arg string) {
 			err = listErr
 		} else {
 			for _, entry := range entries {
-				s.printListEntry(conn, entry)
+				s.printListEntry(w, entry)
 			}
 		}
 	}
@@ -123,6 +126,10 @@ func (s *session) handleLIST(arg string) {
 		// Or just 226 Transfer complete (but empty).
 		// If path invalid, better 550.
 		s.reply(550, "Error listing directory: "+err.Error())
+		return
+	}
+	if err := w.Flush(); err != nil {
+		s.reply(426, "Connection closed; transfer aborted.")
 		return
 	}
 
@@ -222,8 +229,13 @@ func (s *session) handleNLST(arg string) {
 	}
 	defer conn.Close()
 
+	w := bufio.NewWriter(conn)
 	for _, entry := range entries {
-		fmt.Fprintf(conn, "%s\r\n", entry.Name())
+		fmt.Fprintf(w, "%s\r\n", entry.Name())
+	}
+	if err := w.Flush(); err != nil {
+		s.reply(426, "Connection closed; transfer aborted.")
+		return
 	}
 
 	s.reply(226, "Transfer complete.")

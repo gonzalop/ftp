@@ -169,8 +169,9 @@ func TestReader_LargeTransfer(t *testing.T) {
 	if duration < 800*time.Millisecond {
 		t.Errorf("Large read completed too quickly (%v), rate limiting may not be working", duration)
 	}
-	// But shouldn't take more than 3 seconds (with reasonable overhead)
-	if duration > 3*time.Second {
+	// But not much longer. The bound is loose so a loaded machine
+	// (e.g. go test -race) does not fail the test.
+	if duration > 10*time.Second {
 		t.Errorf("Large read took too long (%v), possible performance issue", duration)
 	}
 }
@@ -208,8 +209,9 @@ func TestWriter_LargeTransfer(t *testing.T) {
 	if duration < 800*time.Millisecond {
 		t.Errorf("Large write completed too quickly (%v), rate limiting may not be working", duration)
 	}
-	// But shouldn't take more than 3 seconds (with reasonable overhead)
-	if duration > 3*time.Second {
+	// But not much longer. The bound is loose so a loaded machine
+	// (e.g. go test -race) does not fail the test.
+	if duration > 10*time.Second {
 		t.Errorf("Large write took too long (%v), possible performance issue", duration)
 	}
 }
@@ -221,23 +223,19 @@ func TestUnlimitedRate(t *testing.T) {
 		data[i] = byte(i % 256)
 	}
 
-	// Nil limiter should not throttle
-	reader := NewReader(bytes.NewReader(data), nil)
+	// Nil limiter should not throttle: the reader is returned unwrapped.
+	src := bytes.NewReader(data)
+	reader := NewReader(src, nil)
+	if reader != io.Reader(src) {
+		t.Errorf("NewReader with nil limiter wrapped the reader (%T)", reader)
+	}
 
-	start := time.Now()
 	result, err := io.ReadAll(reader)
-	duration := time.Since(start)
-
 	if err != nil {
 		t.Fatalf("Read failed: %v", err)
 	}
 	if len(result) != len(data) {
 		t.Errorf("Expected to read %d bytes, got %d", len(data), len(result))
-	}
-
-	// Should complete very quickly (< 100ms)
-	if duration > 100*time.Millisecond {
-		t.Errorf("Unlimited read took too long (%v)", duration)
 	}
 }
 

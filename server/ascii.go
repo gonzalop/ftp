@@ -205,16 +205,14 @@ func (aw *asciiWriter) Read(p []byte) (n int, err error) {
 			}
 
 			// We are at the CR. Check if CRLF.
+			// Peek(2) returns fewer than 2 bytes only on a read error (EOF,
+			// timeout). The CR is then kept as data, and the next fill
+			// reports the error; returning 0, nil here would spin forever.
 			peeked, _ = aw.r.Peek(2)
 			if len(peeked) >= 2 && peeked[1] == '\n' {
 				// Skip CR
 				_, _ = aw.r.Discard(1)
 				// Next loop iteration will copy the LF
-			} else if len(peeked) == 1 {
-				// Only CR in buffer. Is it EOF?
-				// Safest is to return what we have and let next Read deal with it,
-				// and avoid blocking for now.
-				return n, nil
 			} else {
 				// Single CR, copy it
 				p[n] = '\r'

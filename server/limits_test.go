@@ -254,7 +254,7 @@ func TestPassiveTimeout(t *testing.T) {
 	}))
 
 	srv, _ := NewServer("127.0.0.1:0", WithDriver(driver))
-	srv.passiveTimeout = 1 * time.Second
+	srv.passiveTimeout = 300 * time.Millisecond
 
 	ln, _ := net.Listen("tcp", "127.0.0.1:0")
 	go func() { _ = srv.Serve(ln) }()
@@ -290,14 +290,19 @@ func TestPassiveTimeout(t *testing.T) {
 	}
 	portStr := msg[start+3 : start+3+end]
 
-	// Wait 2 seconds (passive timeout is 1 second)
-	time.Sleep(2 * time.Second)
-
-	// Trying to connect to the passive port should now fail/timeout or be refused
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", portStr), 500*time.Millisecond)
-	if err == nil {
+	// The passive port must stop accepting connections once the passive
+	// timeout expires. Poll instead of sleeping a fixed time.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", portStr), 500*time.Millisecond)
+		if err != nil {
+			return
+		}
 		conn.Close()
-		t.Fatal("expected connection to passive port to fail after timeout, but it succeeded")
+		if time.Now().After(deadline) {
+			t.Fatal("passive port still accepts connections after the passive timeout")
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 

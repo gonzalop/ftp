@@ -435,6 +435,10 @@ if err != nil {
 
 Protect against password guessing attacks by limiting connection attempts.
 
+The server always waits 0.5–1.5s before answering a failed `PASS`, and
+closes a connection (reply 421) after 3 failed attempts. These limits are
+per connection, so also limit connections per IP, as below.
+
 #### Built-in Connection Limits
 
 ```go

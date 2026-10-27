@@ -270,3 +270,50 @@ func TestReloginReleasesContext(t *testing.T) {
 		t.Errorf("open contexts after failed login: got %d, want 0", n)
 	}
 }
+
+// TestTooManyLoginFailures checks that a connection is closed after
+// maxLoginFailures failed PASS commands.
+func TestTooManyLoginFailures(t *testing.T) {
+	t.Parallel()
+	rootDir := t.TempDir()
+	driver, err := NewFSDriver(rootDir, WithAuthenticator(func(_, _, _ string, _ net.IP) (string, bool, error) {
+		return "", false, os.ErrPermission
+	}))
+	fatalIfErr(t, err, "NewFSDriver")
+	_, addr := startRawServer(t, driver)
+	c := dialRaw(t, addr)
+
+	for i := 1; i <= maxLoginFailures; i++ {
+		c.cmd("USER alice")
+		r := c.cmd("PASS bad")
+		want := "530 "
+		if i == maxLoginFailures {
+			want = "421 "
+		}
+		if !strings.HasPrefix(r, want) {
+			t.Fatalf("PASS #%d: got %q, want %s", i, r, want)
+		}
+	}
+	_ = c.conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, err := c.r.ReadByte(); err == nil || os.IsTimeout(err) {
+		t.Errorf("connection still open after too many failed logins: %v", err)
+	}
+}
+
+// TestQUITClosesConnection checks that the server closes the control
+// connection after replying to QUIT (RFC 959).
+func TestQUITClosesConnection(t *testing.T) {
+	t.Parallel()
+	driver, err := NewFSDriver(t.TempDir())
+	fatalIfErr(t, err, "NewFSDriver")
+	_, addr := startRawServer(t, driver)
+	c := dialRaw(t, addr)
+
+	if r := c.cmd("QUIT"); !strings.HasPrefix(r, "221 ") {
+		t.Fatalf("QUIT: got %q, want 221", r)
+	}
+	_ = c.conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, err := c.r.ReadByte(); err == nil || os.IsTimeout(err) {
+		t.Errorf("connection still open after QUIT: %v", err)
+	}
+}

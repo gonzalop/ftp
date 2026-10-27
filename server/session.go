@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -48,6 +49,13 @@ type session struct {
 	transferCtx    context.Context
 	transferCancel context.CancelFunc
 	transferWG     sync.WaitGroup
+
+	// quit is set by QUIT (or too many failed logins); serve then ends the
+	// session. Only the serve goroutine uses it.
+	quit bool
+
+	// loginFailures counts failed PASS commands on this connection.
+	loginFailures int
 
 	// Reader synchronization
 	cmdReqChan chan struct{}
@@ -304,6 +312,9 @@ func (s *session) serve() {
 		if s.server.writeTimeout > 0 {
 			_ = s.conn.SetWriteDeadline(time.Time{})
 		}
+		if s.quit {
+			return
+		}
 
 		select {
 		case s.cmdReqChan <- struct{}{}:
@@ -332,6 +343,7 @@ func (s *session) startCommandReader(done chan struct{}) chan command {
 	cmdChan := make(chan command)
 	go func() {
 		defer close(cmdChan)
+		var partial string // command bytes read before a timeout during a transfer
 		for {
 			s.mu.Lock()
 			conn := s.conn
@@ -344,6 +356,20 @@ func (s *session) startCommandReader(done chan struct{}) chan command {
 			}
 
 			line, err := s.readCommand()
+			line = partial + line
+			partial = ""
+
+			// The control connection is expected to be quiet while a transfer
+			// runs; timing out then would abort a long transfer.
+			if ne := net.Error(nil); errors.As(err, &ne) && ne.Timeout() && len(line) < MaxCommandLength {
+				s.mu.Lock()
+				busy := s.busy
+				s.mu.Unlock()
+				if busy {
+					partial = line
+					continue
+				}
+			}
 
 			select {
 			case cmdChan <- command{line, err}:
@@ -484,7 +510,11 @@ func (s *session) handleCommand(line string) {
 	case "PASS":
 		err = s.handlePASS(arg)
 	case "QUIT":
+		// RFC 959: a running transfer finishes and gets its reply first,
+		// then the server closes the control connection.
+		s.transferWG.Wait()
 		s.reply(221, "Service closing control connection.")
+		s.quit = true
 		return
 	case "NOOP":
 		s.reply(200, "OK.")
@@ -598,24 +628,26 @@ func (s *session) wrapDataConn(conn net.Conn) (net.Conn, error) {
 		}
 		// RFC 4217: The FTP server MUST act as the TLS server.
 		tlsConn := tls.Server(conn, s.server.tlsConfig)
+		// The handshake runs on the command loop, so a client that never
+		// sends a ClientHello must not be able to block it forever.
+		_ = conn.SetDeadline(time.Now().Add(s.server.dataHandshakeTimeout))
 		if err := tlsConn.Handshake(); err != nil {
 			conn.Close()
 			return nil, err
 		}
+		_ = conn.SetDeadline(time.Time{})
 		conn = tlsConn
 	}
 
-	// Apply timeouts to data connection
-	if s.server.readTimeout > 0 {
-		_ = conn.SetReadDeadline(time.Now().Add(s.server.readTimeout))
-	}
-	if s.server.writeTimeout > 0 {
-		_ = conn.SetWriteDeadline(time.Now().Add(s.server.writeTimeout))
-	}
-
-	// Track data connection
+	// Track data connection. trackingConn applies the read and write
+	// timeouts on each I/O call.
 	s.server.trackConnection(conn, true, false)
-	return &trackingConn{Conn: conn, server: s.server}, nil
+	return &trackingConn{
+		Conn:         conn,
+		server:       s.server,
+		readTimeout:  s.server.readTimeout,
+		writeTimeout: s.server.writeTimeout,
+	}, nil
 }
 
 func (s *session) handleABOR(_ string) {

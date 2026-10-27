@@ -83,6 +83,9 @@ type Server struct {
 	// If 0, no timeout is applied.
 	writeTimeout time.Duration
 
+	// dataHandshakeTimeout bounds the TLS handshake on a data connection.
+	dataHandshakeTimeout time.Duration
+
 	// maxConnections is the maximum number of simultaneous connections.
 	// If 0, there is no limit.
 	maxConnections int
@@ -218,6 +221,8 @@ func NewServer(addr string, options ...Option) (*Server, error) {
 		connsByIP:       make(map[string]int32),
 		listenerFactory: &DefaultListenerFactory{},
 		passiveTimeout:  15 * time.Second,
+
+		dataHandshakeTimeout: 10 * time.Second,
 	}
 
 	// Apply options
@@ -349,38 +354,32 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		err = ln.Close()
 	}
 
-	// Wait for active connections to finish or context to expire
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for {
-			if s.activeConns.Load() == 0 {
-				return
+	// Wait for active connections to finish or context to expire.
+	// Polling here, not in a goroutine, so nothing outlives Shutdown.
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for s.activeConns.Load() != 0 {
+		select {
+		case <-ticker.C:
+		case <-ctx.Done():
+			// Context expired, force close remaining connections
+			s.mu.Lock()
+			conns := s.conns
+			s.conns = make(map[net.Conn]struct{})
+			s.mu.Unlock()
+
+			for conn := range maps.Keys(conns) {
+				conn.Close()
 			}
-			time.Sleep(100 * time.Millisecond)
-		}
-	}()
 
-	select {
-	case <-done:
-		// All connections finished gracefully
-		return err
-	case <-ctx.Done():
-		// Context expired, force close remaining connections
-		s.mu.Lock()
-		conns := s.conns
-		s.conns = make(map[net.Conn]struct{})
-		s.mu.Unlock()
-
-		for conn := range maps.Keys(conns) {
-			conn.Close()
+			if err != nil {
+				return err
+			}
+			return ctx.Err()
 		}
-
-		if err != nil {
-			return err
-		}
-		return ctx.Err()
 	}
+	// All connections finished gracefully
+	return err
 }
 
 // Serve accepts incoming connections on the listener l.
@@ -502,20 +501,75 @@ func remoteHost(conn net.Conn) string {
 }
 
 // trackingConn wraps a net.Conn to track its lifetime in the server.
+//
+// When readTimeout or writeTimeout is set, the matching deadline is pushed
+// forward before every read or write, so they bound how long a transfer may
+// stall, not how long it may take.
 type trackingConn struct {
 	net.Conn
-	server    *Server
-	closeOnce sync.Once
+	server       *Server
+	readTimeout  time.Duration
+	writeTimeout time.Duration
+	closeOnce    sync.Once
+}
+
+// zeroCopyChunk is how much ReadFrom and WriteTo copy between deadline
+// updates when a timeout is set. It matches the transfer buffer size, so a
+// timeout means the same as with plain Read and Write calls.
+const zeroCopyChunk = 32 << 10
+
+func (c *trackingConn) Read(p []byte) (int, error) {
+	if c.readTimeout > 0 {
+		_ = c.Conn.SetReadDeadline(time.Now().Add(c.readTimeout))
+	}
+	return c.Conn.Read(p)
+}
+
+func (c *trackingConn) Write(p []byte) (int, error) {
+	if c.writeTimeout > 0 {
+		_ = c.Conn.SetWriteDeadline(time.Now().Add(c.writeTimeout))
+	}
+	return c.Conn.Write(p)
 }
 
 func (c *trackingConn) ReadFrom(r io.Reader) (int64, error) {
 	// io.Copy calls c.Conn.ReadFrom if available
-	return io.Copy(c.Conn, r)
+	if c.writeTimeout <= 0 {
+		return io.Copy(c.Conn, r)
+	}
+	// io.CopyN passes an *io.LimitedReader, which still allows sendfile(2).
+	var total int64
+	for {
+		_ = c.Conn.SetWriteDeadline(time.Now().Add(c.writeTimeout))
+		n, err := io.CopyN(c.Conn, r, zeroCopyChunk)
+		total += n
+		if err == io.EOF {
+			return total, nil
+		}
+		if err != nil {
+			return total, err
+		}
+	}
 }
 
 func (c *trackingConn) WriteTo(w io.Writer) (int64, error) {
 	// io.Copy calls c.Conn.WriteTo if available
-	return io.Copy(w, c.Conn)
+	if c.readTimeout <= 0 {
+		return io.Copy(w, c.Conn)
+	}
+	// io.CopyN passes an *io.LimitedReader, which still allows splice(2).
+	var total int64
+	for {
+		_ = c.Conn.SetReadDeadline(time.Now().Add(c.readTimeout))
+		n, err := io.CopyN(w, c.Conn, zeroCopyChunk)
+		total += n
+		if err == io.EOF {
+			return total, nil
+		}
+		if err != nil {
+			return total, err
+		}
+	}
 }
 
 func (c *trackingConn) Close() error {

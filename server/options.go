@@ -77,6 +77,7 @@ func WithLogger(logger *slog.Logger) Option {
 
 // WithMaxIdleTime sets the maximum time a connection can be idle before being closed.
 // If not specified, defaults to 5 minutes.
+// A session is not idle while a data transfer is running.
 //
 // Example:
 //

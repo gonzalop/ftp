@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -128,21 +129,27 @@ func (s *session) handleMLSD(arg string) {
 		return
 	}
 	defer conn.Close()
+	// One write per entry would be one syscall (or TLS record) per entry.
+	w := bufio.NewWriter(conn)
 
 	if recursive {
-		err = s.mlsdRecursive(conn, path, path)
+		err = s.mlsdRecursive(w, path, path)
 	} else {
 		var entries []os.FileInfo
 		entries, err = s.fs.ListDir(path)
 		if err == nil {
 			for _, entry := range entries {
-				s.writeMLEntry(conn, entry, "")
+				s.writeMLEntry(w, entry, "")
 			}
 		}
 	}
 
 	if err != nil {
 		s.reply(550, "Error listing directory: "+err.Error())
+		return
+	}
+	if err := w.Flush(); err != nil {
+		s.reply(426, "Connection closed; transfer aborted.")
 		return
 	}
 
