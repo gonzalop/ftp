@@ -34,6 +34,9 @@ func WithTimeout(timeout time.Duration) Option {
 //	)
 func WithIdleTimeout(timeout time.Duration) Option {
 	return func(c *Client) error {
+		if timeout < 0 {
+			return fmt.Errorf("idle timeout must not be negative: %v", timeout)
+		}
 		c.idleTimeout = timeout
 		return nil
 	}

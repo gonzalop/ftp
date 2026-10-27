@@ -182,6 +182,14 @@ func readMultiLine(r *bufio.Reader, code int, lines *[]string) error {
 
 // sendCommand sends an FTP command and returns the response.
 func (c *Client) sendCommand(command string, args ...string) (*Response, error) {
+	// Lock the client to prevent concurrent commands
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.sendCommandLocked(command, args...)
+}
+
+// sendCommandLocked is sendCommand for callers that already hold c.mu.
+func (c *Client) sendCommandLocked(command string, args ...string) (*Response, error) {
 	// Build the full command
 	var cmd string
 	if len(args) > 0 {
@@ -204,10 +212,6 @@ func (c *Client) sendCommand(command string, args ...string) (*Response, error) 
 		}
 		c.logger.Debug("ftp command", "cmd", altCmd)
 	}
-
-	// Lock the client to prevent concurrent commands
-	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	// Update last command time
 	c.lastCommand = time.Now()

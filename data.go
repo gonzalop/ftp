@@ -8,6 +8,7 @@ import (
 	"net"
 	"regexp"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -180,6 +181,14 @@ func (c *Client) openActiveDataConn() (net.Conn, error) {
 		}
 	}
 
+	// Close the listener on every error return below.
+	ok := false
+	defer func() {
+		if !ok {
+			listener.Close()
+		}
+	}()
+
 	// Get the local address
 	addr := listener.Addr().String()
 
@@ -236,6 +245,7 @@ func (c *Client) openActiveDataConn() (net.Conn, error) {
 		serverIP = net.ParseIP(host)
 	}
 
+	ok = true
 	return &activeDataConn{
 		listener:  listener,
 		tlsConfig: c.tlsConfig,
@@ -245,12 +255,38 @@ func (c *Client) openActiveDataConn() (net.Conn, error) {
 }
 
 // activeDataConn wraps a listener for active mode connections.
+//
+// The transfer goroutine accepts the connection, while Abort may close it
+// from another goroutine, so conn and closed are guarded by mu.
 type activeDataConn struct {
 	listener  net.Listener
-	conn      net.Conn
 	tlsConfig *tls.Config
 	timeout   time.Duration
 	serverIP  net.IP // only this peer may connect; nil skips the check
+
+	mu     sync.Mutex
+	conn   net.Conn
+	closed bool
+}
+
+// getConn returns the accepted connection, or nil before accept.
+func (a *activeDataConn) getConn() net.Conn {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.conn
+}
+
+// setConn stores c as the data connection. It fails, closing c, if Close
+// was already called.
+func (a *activeDataConn) setConn(c net.Conn) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		c.Close()
+		return net.ErrClosed
+	}
+	a.conn = c
+	return nil
 }
 
 func (a *activeDataConn) accept() error {
@@ -262,31 +298,38 @@ func (a *activeDataConn) accept() error {
 	// Only the server may connect; anyone else who reaches the port first
 	// could inject or receive the data. Drop other peers and keep waiting
 	// until the listener deadline.
+	var conn net.Conn
 	for {
 		c, err := a.listener.Accept()
 		if err != nil {
 			return err
 		}
 		if a.isServer(c.RemoteAddr()) {
-			a.conn = c
+			conn = c
 			break
 		}
 		c.Close()
+	}
+	// Store the raw connection first, so Close can interrupt the handshake.
+	if err := a.setConn(conn); err != nil {
+		return err
 	}
 
 	// Wrap in TLS if needed. RFC 4217: the FTP client is always the TLS
 	// client, also when the server opens the data connection.
 	if a.tlsConfig != nil {
-		tlsConn := tls.Client(a.conn, a.tlsConfig)
+		tlsConn := tls.Client(conn, a.tlsConfig)
 		// Set deadline for handshake
 		if a.timeout > 0 {
-			_ = a.conn.SetDeadline(time.Now().Add(a.timeout))
+			_ = conn.SetDeadline(time.Now().Add(a.timeout))
 		}
 		if err := tlsConn.Handshake(); err != nil {
-			a.conn.Close()
+			conn.Close()
 			return err
 		}
-		a.conn = tlsConn
+		if err := a.setConn(tlsConn); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -294,7 +337,7 @@ func (a *activeDataConn) accept() error {
 // Handshake accepts the server's connection, and runs TLS on it if
 // configured, unless that already happened.
 func (a *activeDataConn) Handshake() error {
-	if a.conn != nil {
+	if a.getConn() != nil {
 		return nil
 	}
 	return a.accept()
@@ -314,34 +357,54 @@ func (a *activeDataConn) isServer(addr net.Addr) bool {
 	return ip != nil && (ip.Equal(a.serverIP) || (ip.IsLoopback() && a.serverIP.IsLoopback()))
 }
 
+// connected returns the data connection, accepting it first if needed.
+func (a *activeDataConn) connected() (net.Conn, error) {
+	if conn := a.getConn(); conn != nil {
+		return conn, nil
+	}
+	if err := a.accept(); err != nil {
+		return nil, err
+	}
+	return a.getConn(), nil
+}
+
 func (a *activeDataConn) Read(p []byte) (n int, err error) {
-	if a.conn == nil {
-		if err := a.accept(); err != nil {
-			return 0, err
-		}
+	conn, err := a.connected()
+	if err != nil {
+		return 0, err
 	}
 	if a.timeout > 0 {
-		_ = a.conn.SetReadDeadline(time.Now().Add(a.timeout))
+		_ = conn.SetReadDeadline(time.Now().Add(a.timeout))
 	}
-	return a.conn.Read(p)
+	return conn.Read(p)
 }
 
 func (a *activeDataConn) Write(p []byte) (n int, err error) {
-	if a.conn == nil {
-		if err := a.accept(); err != nil {
-			return 0, err
-		}
+	conn, err := a.connected()
+	if err != nil {
+		return 0, err
 	}
 	if a.timeout > 0 {
-		_ = a.conn.SetWriteDeadline(time.Now().Add(a.timeout))
+		_ = conn.SetWriteDeadline(time.Now().Add(a.timeout))
 	}
-	return a.conn.Write(p)
+	return conn.Write(p)
 }
 
+// Close closes the connection and the listener. Abort and the transfer's
+// cleanup may both call it, at the same time; only the first call acts.
 func (a *activeDataConn) Close() error {
+	a.mu.Lock()
+	if a.closed {
+		a.mu.Unlock()
+		return nil
+	}
+	a.closed = true
+	conn := a.conn
+	a.mu.Unlock()
+
 	var err1, err2 error
-	if a.conn != nil {
-		err1 = a.conn.Close()
+	if conn != nil {
+		err1 = conn.Close()
 	}
 	if a.listener != nil {
 		err2 = a.listener.Close()
@@ -353,36 +416,36 @@ func (a *activeDataConn) Close() error {
 }
 
 func (a *activeDataConn) LocalAddr() net.Addr {
-	if a.conn != nil {
-		return a.conn.LocalAddr()
+	if conn := a.getConn(); conn != nil {
+		return conn.LocalAddr()
 	}
 	return a.listener.Addr()
 }
 
 func (a *activeDataConn) RemoteAddr() net.Addr {
-	if a.conn != nil {
-		return a.conn.RemoteAddr()
+	if conn := a.getConn(); conn != nil {
+		return conn.RemoteAddr()
 	}
 	return nil
 }
 
 func (a *activeDataConn) SetDeadline(t time.Time) error {
-	if a.conn != nil {
-		return a.conn.SetDeadline(t)
+	if conn := a.getConn(); conn != nil {
+		return conn.SetDeadline(t)
 	}
 	return nil
 }
 
 func (a *activeDataConn) SetReadDeadline(t time.Time) error {
-	if a.conn != nil {
-		return a.conn.SetReadDeadline(t)
+	if conn := a.getConn(); conn != nil {
+		return conn.SetReadDeadline(t)
 	}
 	return nil
 }
 
 func (a *activeDataConn) SetWriteDeadline(t time.Time) error {
-	if a.conn != nil {
-		return a.conn.SetWriteDeadline(t)
+	if conn := a.getConn(); conn != nil {
+		return conn.SetWriteDeadline(t)
 	}
 	return nil
 }

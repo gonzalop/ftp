@@ -201,7 +201,9 @@ func (c *Client) List(path string) ([]*Entry, error) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		dataConn.Close()
+		// Still read the transfer's final reply, or the next command
+		// would get it instead of its own.
+		_ = c.finishDataConn(dataConn)
 		return nil, fmt.Errorf("failed to read directory listing: %w", err)
 	}
 
@@ -589,7 +591,9 @@ func (c *Client) NameList(path string) ([]string, error) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		dataConn.Close()
+		// Still read the transfer's final reply, or the next command
+		// would get it instead of its own.
+		_ = c.finishDataConn(dataConn)
 		return nil, fmt.Errorf("failed to read name list: %w", err)
 	}
 

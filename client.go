@@ -187,50 +187,56 @@ func Dial(addr string, options ...Option) (*Client, error) {
 // startKeepAlive starts a goroutine that sends NOOP commands
 // if the connection has been idle for the configured idleTimeout.
 func (c *Client) startKeepAlive() {
-	if c.idleTimeout == 0 {
+	if c.idleTimeout <= 0 {
 		return
 	}
 
 	c.quitChan = make(chan struct{})
 
-	// We use a ticker that runs at half the idle timeout to be safe
-	ticker := time.NewTicker(c.idleTimeout / 2)
+	// We use a ticker that runs at half the idle timeout to be safe.
+	// NewTicker panics on a non-positive interval.
+	ticker := time.NewTicker(max(c.idleTimeout/2, time.Millisecond))
 
 	go func() {
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
-				// Skip if a data transfer is in progress
-				c.mu.Lock()
-				transferring := c.activeDataConn != nil
-				c.mu.Unlock()
-				if transferring {
-					continue
-				}
-
-				c.mu.Lock()
-				last := c.lastCommand
-				c.mu.Unlock()
-
-				// If time since last command is greater than idle timeout, send NOOP
-				if time.Since(last) >= c.idleTimeout {
-					if c.logger != nil {
-						c.logger.Debug("sending keep-alive NOOP")
-					}
+				if err := c.keepAlive(); err != nil {
 					// Exit goroutine if NOOP fails (indicates broken connection)
-					if err := c.Noop(); err != nil {
-						if c.logger != nil {
-							c.logger.Debug("keep-alive failed, exiting goroutine", "err", err)
-						}
-						return
+					if c.logger != nil {
+						c.logger.Debug("keep-alive failed, exiting goroutine", "err", err)
 					}
+					return
 				}
 			case <-c.quitChan:
 				return
 			}
 		}
 	}()
+}
+
+// keepAlive sends NOOP if the connection has been idle for idleTimeout and
+// no data transfer is in progress. The check and the NOOP happen under one
+// hold of c.mu, so a transfer cannot start in between and have its reply
+// read by the NOOP.
+func (c *Client) keepAlive() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.activeDataConn != nil || time.Since(c.lastCommand) < c.idleTimeout {
+		return nil
+	}
+	if c.logger != nil {
+		c.logger.Debug("sending keep-alive NOOP")
+	}
+	resp, err := c.sendCommandLocked("NOOP")
+	if err != nil {
+		return err
+	}
+	if !resp.Is2xx() {
+		return &ProtocolError{Command: "NOOP", Response: resp.Message, Code: resp.Code}
+	}
+	return nil
 }
 
 // Connect connects to an FTP server using a URL.
